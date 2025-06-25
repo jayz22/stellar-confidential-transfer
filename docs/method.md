@@ -55,7 +55,7 @@ It is a protocol not a proof. A proof contains public inputs and witnesses and t
 
 Proves that a message $m$ encrypts to $C$ under randomness $r$ , and multiple public keys under the same $r$ can decrypt the same message. I.e. $C = mG+rH$ and for $i = 1..N$, $D_i = r*Y_i$
 
-(where N is typically $2+\#auditors$)
+(where N is typically $2+num_auditors$)
 
 Public inputs: $(C, D_{\{i=1..N\}}, Y_{\{i=1..N\}}, G, H)$, witnesses $(m, r)$
 
