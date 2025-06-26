@@ -141,33 +141,33 @@ Sender's initial encrypted balance
 
 $\tilde{C} = mG + \tilde{r}H$, $\tilde{D} = \tilde{r}Y$
 
-The transfer amount needs to be encrypted once with randomness $r^{*}$, and $2+N$ decryption handles
+The transfer amount needs to be encrypted once with randomness $r^*$, and $2+N$ decryption handles
 
-$C^{*} = vG+r^{*}H$, with sender handle $D_s^{*} = r^{*}Y_s$, receiver handle $D_d^{*} = r^{*}Y_d$, and auditor handles $D_{1..N}^{*} = r^{*}Y_{1..N}$
+$C^* = vG+r^*H$, with sender handle $D_s^* = r^*Y_s$, receiver handle $D_d^* = r^*Y_d$, and auditor handles $D_{1..N}^* = r^*Y_{1..N}$
 
 Sender's new encrypted balance is derived homomorphically from the old encrypted balance and the encrypted amount $(C, D)$
 
-$C = \tilde{C} - C^{*}$, decryption handle $D = \tilde{D} - D_s^{*}$.
+$C = \tilde{C} - C^*$, decryption handle $D = \tilde{D} - D_s^*$.
 
 The sender does not know the randomness so in order to prove its range, it needs to decrypt it to get the new balance, then commit to it with a new randomness $r'$
 
-Decryption of the right amount: $\tilde{C} - C^{*} = bG + sk \cdot (\tilde{D} - D_s^{*})$
+Decryption of the right amount: $\tilde{C} - C^* = bG + sk \cdot (\tilde{D} - D_s^*)$
 
 The new commitment: $C' = bG + r'H$
 
 #### Proof Description
 
-Public inputs $(\tilde{C}, \tilde{D}, C^{*}, D^{*}_{\{s, d, 1..N\}}, Y_{\{s, d, 1..N\}}, C', G, H)$, witnesses $(r^{*}, r', sk_s, v, b)$
+Public inputs $(\tilde{C}, \tilde{D}, C^*, D^*_{\{s, d, 1..N\}}, Y_{\{s, d, 1..N\}}, C', G, H)$, witnesses $(r^*, r', sk_s, v, b)$
 
 Statements that need to be proven in a transfer Sigma proof. 
 
-1. The right transfer amount $v$ is committed with randomness $r^{*}$, and decryption handles for all parties contain the same randomness
-$$ C^{*} = vG+r^{*}H $$
-$$D_{\{s,d,1..N\}}^{*} = r^{*}Y_{\{s,d,1..N\}}$$
+1. The right transfer amount $v$ is committed with randomness $r^*$, and decryption handles for all parties contain the same randomness
+$$ C^* = vG+r^*H $$
+$$D_{\{s,d,1..N\}}^* = r^*Y_{\{s,d,1..N\}}$$
 
 2. The balance $b$ being committed with $r'$ is same as the sender's new encrypted balance *and* the sender knows the secret key to decrypt it *and* the balance is the correct diff.
 $$ C' = bG + r'H $$
-$$\tilde{C} - C^{*} = bG + sk \cdot (\tilde{D} - D_s^{*})$$
+$$\tilde{C} - C^* = bG + sk \cdot (\tilde{D} - D_s^*)$$
 
 3. The decryption key corresponds to sender's encryption key
 $$
