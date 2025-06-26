@@ -106,19 +106,13 @@ Public inputs: $(\tilde{C}, \tilde{D}, C', Y, G, H)$, witnesses $(v, r, b, r', s
 Statements that need to be proven:
 
 1. The amount and balances adds up, and the sender knows the decryption key
-$$
-\tilde{C} - vG = bG + sk \cdot \tilde{D}
-$$
+$$\tilde{C} - vG = bG + sk \cdot \tilde{D}$$
 
 2. The amount being committed is the same amount as above
-$$
-C' = bG + r'H
-$$
+$$C' = bG + r'H$$
 
 3. The secret key corresponds to the sender's public key
-$$
-Y = sk^{-1}H
-$$
+$$Y = sk^{-1}H$$
 
 Notes: 
 1. The withdraw proof does not involve any auditors, since the withdraw amount is not confidential
@@ -135,7 +129,7 @@ Proves a transfer amount is valid (does not underflow sender's balance or overfl
 
 Sender's initial balance $m$, sending amount $v$, sender's final balance $b=m-v$. 
 
-Sender's public key $Y_s$, receiver's public key $Y_d$, auditors' public keys $Y_{1}..Y_{N}$
+Sender's public key $Y_s$, receiver's public key $Y_d$, auditors' public keys $Y_1, \ldots, Y_N$
 
 Sender's initial encrypted balance
 
@@ -143,7 +137,7 @@ $\tilde{C} = mG + \tilde{r}H$, $\tilde{D} = \tilde{r}Y$
 
 The transfer amount needs to be encrypted once with randomness $r^*$, and $2+N$ decryption handles
 
-$C^* = vG+r^*H$, with sender handle $D_s^* = r^*Y_s$, receiver handle $D_d^* = r^*Y_d$, and auditor handles $D_{1..N}^* = r^*Y_{1..N}$
+$C^* = vG + r^*H$, with sender handle $D_s^* = r^*Y_s$, receiver handle $D_d^* = r^*Y_d$, and auditor handles $D_1^*, \ldots, D_N^* = r^*Y_1, \ldots, r^*Y_N$
 
 Sender's new encrypted balance is derived homomorphically from the old encrypted balance and the encrypted amount $(C, D)$
 
@@ -157,22 +151,22 @@ The new commitment: $C' = bG + r'H$
 
 #### Proof Description
 
-Public inputs $(\tilde{C}, \tilde{D}, C^*, D^*_{\{s, d, 1..N\}}, Y_{\{s, d, 1..N\}}, C', G, H)$, witnesses $(r^*, r', sk_s, v, b)$
+Public inputs $(\tilde{C}, \tilde{D}, C^*, D_s^*, D_d^*, D_1^*, \ldots, D_N^*, Y_s, Y_d, Y_1, \ldots, Y_N, C', G, H)$, witnesses $(r^*, r', sk_s, v, b)$
 
 Statements that need to be proven in a transfer Sigma proof. 
 
 1. The right transfer amount $v$ is committed with randomness $r^*$, and decryption handles for all parties contain the same randomness
-$$ C^* = vG+r^*H $$
-$$D_{\{s,d,1..N\}}^* = r^*Y_{\{s,d,1..N\}}$$
+$$C^* = vG + r^*H$$
+$$D_s^* = r^*Y_s$$
+$$D_d^* = r^*Y_d$$
+$$D_i^* = r^*Y_i \text{ for } i = 1, \ldots, N$$
 
 2. The balance $b$ being committed with $r'$ is same as the sender's new encrypted balance *and* the sender knows the secret key to decrypt it *and* the balance is the correct diff.
-$$ C' = bG + r'H $$
+$$C' = bG + r'H$$
 $$\tilde{C} - C^* = bG + sk \cdot (\tilde{D} - D_s^*)$$
 
 3. The decryption key corresponds to sender's encryption key
-$$
-Y_s = sk_s^{-1}H
-$$
+$$Y_s = sk_s^{-1}H$$
 
 Notes:
 1. The full transfer proof requires two new range proofs
@@ -190,24 +184,22 @@ After the balance is normalized, it contains two chunks $(C_0, C_1)$ and decrypt
 
 #### Proof Description
 
-Public inputs $(\tilde{C}_{0}, \tilde{C}_{1}, \tilde{D}, C_0, C_1, D, Y, G, H)$, witnesses $(b_0, b_1, r, sk)$
+Public inputs $(\tilde{C_0}, \tilde{C_1}, \tilde{D}, C_0, C_1, D, Y, G, H)$, witnesses $(b_0, b_1, r, sk)$
 
 Statements to be proven:
 
 1. The old encrypted amount equals the new encrypted amount:
 
-$$\tilde{C_0} + 2^{16} \tilde{C_1} - C_0 - 2^{16} C_1 = 0 \cdot G + (1+2^{16})sk \cdot (\tilde{D}-D) $$
+$$\tilde{C_0} + 2^{16} \tilde{C_1} - C_0 - 2^{16} C_1 = 0 \cdot G + (1+2^{16})sk \cdot (\tilde{D}-D)$$
 
 2. The new amount is correctly encoded with randomness $r$ and the correct decryption handles are assigned, i.e.
-$$ C_0 = b_0G + rH $$
-$$ C_1 = b_1G + rH $$
+$$C_0 = b_0G + rH$$
+$$C_1 = b_1G + rH$$
 $$D = rY$$
 $$D_A = rY_A$$
 
 3. The secret key corresponds to the account's public key
-$$
-Y = sk^{-1}H
-$$
+$$Y = sk^{-1}H$$
 
 In addition, two range proofs are needed that both $b_0$ and $b_1$ fit within 16 bits.
 
