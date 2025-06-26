@@ -56,15 +56,15 @@ It is a protocol not a proof. A proof contains public inputs and witnesses and t
 
 ### Equality proof
 
-Proves that a message $m$ encrypts to $C$ under randomness $r$, and multiple public keys under the same $r$ can decrypt the same message. I.e. $C = mG+rH$ and for $i = 1..N$, $D_i = r \cdot Y_i$
+Proves that a message $m$ encrypts to $C$ under randomness $r$, and multiple public keys under the same $r$ can decrypt the same message. I.e. $C = mG+rH$ and for $i = 1, \ldots, N$, $D_i = r \cdot Y_i$
 
 (where N is typically $2+\text{num\_auditors}$)
 
-Public inputs: $(C, D_{\{i=1..N\}}, Y_{\{i=1..N\}}, G, H)$, witnesses $(m, r)$
+Public inputs: $(C, D_1, \ldots, D_N, Y_1, \ldots, Y_N, G, H)$, witnesses $(m, r)$
 
 #### Steps of interactive proof
 
-1. Prover picks random values $a$, $b$, computes $A = aG+bH$ and $\forall i=1..N$, $B_i = b \cdot Y_i$ sends $A$, $B_i$ to the verifier.
+1. Prover picks random values $a$, $b$, computes $A = aG+bH$ and for $i=1, \ldots, N$, $B_i = b \cdot Y_i$ sends $A$, $B_i$ to the verifier.
 
 2. Verifier: generates a random challenge $e$ and sends it to the prover
 
@@ -73,7 +73,7 @@ Public inputs: $(C, D_{\{i=1..N\}}, Y_{\{i=1..N\}}, G, H)$, witnesses $(m, r)$
 4. Verifier computes and evaluates the following equality relations: 
 
     - $z_1G+z_2H \equiv A+eC$
-    - $\forall i=0..N$, $z_2Y_i \equiv B_i + eD_i$
+    - For $i=1, \ldots, N$, $z_2Y_i \equiv B_i + eD_i$
 
     If any of them is false, return `false`, otherwise return `true`
 
@@ -137,7 +137,7 @@ $\tilde{C} = mG + \tilde{r}H$, $\tilde{D} = \tilde{r}Y$
 
 The transfer amount needs to be encrypted once with randomness $r^*$, and $2+N$ decryption handles
 
-$C^* = vG + r^*H$, with sender handle $D_s^* = r^*Y_s$, receiver handle $D_d^* = r^*Y_d$, and auditor handles $D_1^*, \ldots, D_N^* = r^*Y_1, \ldots, r^*Y_N$
+$C^* = vG + r^*H$, with sender handle $D_s^* = r^*Y_s$, receiver handle $D_d^* = r^*Y_d$, and auditor handles $D_1^* = r^*Y_1, \ldots, D_N^* = r^*Y_N$
 
 Sender's new encrypted balance is derived homomorphically from the old encrypted balance and the encrypted amount $(C, D)$
 
