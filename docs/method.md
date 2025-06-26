@@ -32,11 +32,15 @@ Then solve the discrete log to get $m$. Note: solving discrete log is slow, ther
 Twisted ElGamal encryption is additive homomorphic. Consider two messages $m_1$ and $m_2$, encrypted with two different randomness $r_1$ and $r_2$
 
 $$
-\begin{align*}
-Enc(m_1, r_1) + Enc(m_2, r_2) &= (C_1 + C_2, D_1 + D_2) \\
-&= ((m_1+m_2)G+(r_1+r_2)H, (r_1+r_2)Y) \\
-&\equiv Enc(m_1+m_2, r_1+r_2)
-\end{align*}
+Enc(m_1, r_1) + Enc(m_2, r_2) = (C_1 + C_2, D_1 + D_2)
+$$
+
+$$
+= ((m_1+m_2)G+(r_1+r_2)H, (r_1+r_2)Y)
+$$
+
+$$
+\equiv Enc(m_1+m_2, r_1+r_2)
 $$
 
 Linear homomorphism means the messages can be added in the encrypted space. One important detail is that the randomness is also added. Which means if $m_1$ and $m_2$ are from different parties, neither one knows the randomness that encrypts the message $m_1+m_2$. This does not matter for decrypting the message (and auditing), but it does matter for zero-knowledge proving of such a message (such as used in a range proof). 
