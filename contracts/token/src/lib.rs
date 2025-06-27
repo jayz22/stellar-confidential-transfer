@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token::TokenInterface, Address, Bytes, BytesN, Env, String, Vec
+    contract, contractimpl, contracttype, token::TokenInterface, Address, Bytes, BytesN, Env,
+    String, Vec,
 };
 
 #[contracttype]
@@ -29,12 +30,23 @@ pub struct ConfidentialTokenMetaData {
 }
 
 #[contracttype]
-pub struct NormalizationProof(Bytes);
+pub struct NormalizationProof {
+    sigma_proof: Bytes,
+    range_proof_new_balance: Bytes,
+}
 
 #[contracttype]
-pub struct WithdrawProof(Bytes);
+pub struct WithdrawProof {
+    sigma_proof: Bytes,
+    range_proof_new_balance: Bytes,
+}
+
 #[contracttype]
-pub struct TransferProof(Bytes);
+pub struct TransferProof {
+    sigma_proof: Bytes,
+    range_proof_new_balance: Bytes,
+    range_proof_transfer_amount: Bytes,
+}
 
 #[derive(Clone)]
 #[contracttype]
@@ -116,45 +128,53 @@ impl TokenInterface for ConfidentialToken {
 #[contractimpl]
 impl ConfidentialToken {
     // Deposit a token amount into the confidential balance of an account
-    //     - Loads the confidential extension from `src` and `des`, fail if either does not exist.  
-    //     - If `des`'s `pending_balance_counter` is at max (`10^16`), fail.
+    //     - Loads the confidential extension from `src` and `des`, fail if either does not exist.
+    //     - If `des`'s `pending_balance_counter` is at max (`2^16`), fail.
     //     - Subtracts `amt` from `src`'s regular (transparent) `balance`, fail if `balance` is less than `amt`.
-    //     - Loads the `pending_balance` from `des`. 
-    //     - Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`. 
+    //     - Loads the `pending_balance` from `des`.
+    //     - Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`.
     //     - Increment `des`'s `pending_balance_counter`
     //     - Emits an event TBD
     pub fn deposit_to_confidential(src: Address, des: Address, amt: u64) {
         todo!()
     }
 
-
     // Roll over an account's pending balance into its available balance.
-    //     - Loads the confidential extension from `src`, fail if not exist.  
+    //     - Loads the confidential extension from `src`, fail if not exist.
     //     - Loads the `pending_balance` and `available_balance`.
     //     - Verifies the `proof`, against `new_available_balance`.
-    //     - Sets the `available_balance` to the `new_available_balance`. 
-    //     - Sets the `pending_balance` to zero (encrypt `amt=0` with randomness `r=0`). 
+    //     - Sets the `available_balance` to the `new_available_balance`.
+    //     - Sets the `pending_balance` to zero (encrypt `amt=0` with randomness `r=0`).
     //     - Resets the pending balance counter to 0.
     //     - Emits an event TBD
-    pub fn rollover_pending_balance(src: Address, new_available_balance: EncryptedQuantity, proof: NormalizationProof) {
+    pub fn rollover_pending_balance(
+        src: Address,
+        new_available_balance: EncryptedQuantity,
+        proof: NormalizationProof,
+    ) {
         todo!()
     }
 
     // Withdraw an amount from srcount's confidential balance to its transparent balance
     //     - Loads `src`'s confidential extension, fail if not exist.
-    //     - Verifies the WithdrawProof. 
+    //     - Verifies the WithdrawProof.
     //         - ...
     //     - Encrypt the `amt` with zero randomness (`r=0`) to get `encrypted_amt`.
     //     - Adds `amt` to `src`'s (transparent) balance.
-    //     - Sets `src`'s `available_balance` to `src_new_balance`. 
+    //     - Sets `src`'s `available_balance` to `src_new_balance`.
     //     - Emits an event TBD
-    pub fn withdraw_from_confidential(src: Address, amt: u64, src_new_balance: EncryptedQuantity, proof: WithdrawProof) {
+    pub fn withdraw_from_confidential(
+        src: Address,
+        amt: u64,
+        src_new_balance: EncryptedQuantity,
+        proof: WithdrawProof,
+    ) {
         todo!()
     }
 
     // Transfers an amount confidentially between two accounts.
     //     - Loads confidential extensions from `src` and `des` addresses, fail if either extension does not exist.
-    //     - If `des`'s `pending_balance_counter` is at max (`10^16`), fail.
+    //     - If `des`'s `pending_balance_counter` is at max (`2^16`), fail.
     //     - Verifies the transfer proof.
     //         - equality proof: `amt_src`, `amt_des`, `amt_auditors` all encrypt the same amount
     //         - ...
@@ -162,10 +182,18 @@ impl ConfidentialToken {
     //     - (homomorphically) Adds `des_amt` to `des` account's `pending_balance`.
     //     - Increment `des`'s `pending_balance_counter`
     //     - Emits an event TBD
-    pub fn transfer_confidential(src: Address, des: Address, amt_src: EncryptedQuantity, amt_des: EncryptedQuantity, auditor_keys: Vec<ElGamalPublicKey>, amt_auditors: Vec<EncryptedQuantity>, src_new_balance: EncryptedQuantity, proof: TransferProof) {
+    pub fn transfer_confidential(
+        src: Address,
+        des: Address,
+        amt_src: EncryptedQuantity,
+        amt_des: EncryptedQuantity,
+        auditor_keys: Vec<ElGamalPublicKey>,
+        amt_auditors: Vec<EncryptedQuantity>,
+        src_new_balance: EncryptedQuantity,
+        proof: TransferProof,
+    ) {
         todo!()
     }
 }
-
 
 mod test;

@@ -1,0 +1,18 @@
+[package]
+name = "stellar-confidential-crypto"
+version = "0.1.0"
+edition = "2021"
+description = "Cryptographic primitives for Stellar confidential transactions"
+license = "MIT"
+publish = false
+
+[lib]
+name = "stellar_confidential_crypto"
+crate-type = ["lib"]
+doctest = false
+
+[dependencies]
+solana-zk-sdk = {workspace = true}
+
+[dev-dependencies]
+rand = "0.8" 
