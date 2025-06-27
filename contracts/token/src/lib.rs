@@ -1,11 +1,10 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token::TokenInterface, Address, BytesN, Env, String,
-    Vec,
+    contract, contractimpl, contracttype, token::TokenInterface, Address, Bytes, BytesN, Env, String, Vec
 };
 
 #[contracttype]
-pub struct ElGamalEncryptionKey(BytesN<32>);
+pub struct ElGamalPublicKey(BytesN<32>);
 
 // The quantities (amount and balance) are initially divided into fixed-length (16-bit) chunks
 // and encrypted individually. Additional of quantities occur on each chunk individually, therefore
@@ -17,7 +16,7 @@ pub struct EncryptedChunk(BytesN<32>);
 pub struct DecryptionHandle(BytesN<32>);
 
 #[contracttype]
-pub struct EncryptedAmount {
+pub struct EncryptedQuantity {
     pub amount: Vec<EncryptedChunk>,
     pub handle: DecryptionHandle,
 }
@@ -26,8 +25,16 @@ pub struct EncryptedAmount {
 pub struct ConfidentialTokenMetaData {
     // list of auditors, must be specified when the token is instantiated.
     // all token transfer amounts will be additionally encrypted by each auditor key.
-    pub auditors: Vec<ElGamalEncryptionKey>,
+    pub auditors: Vec<ElGamalPublicKey>,
 }
+
+#[contracttype]
+pub struct NormalizationProof(Bytes);
+
+#[contracttype]
+pub struct WithdrawProof(Bytes);
+#[contracttype]
+pub struct TransferProof(Bytes);
 
 #[derive(Clone)]
 #[contracttype]
@@ -52,11 +59,10 @@ pub enum DataKey {
 
 #[contracttype]
 pub struct ConfidentialAccountExt {
-    pub encryption_key: ElGamalEncryptionKey,
-    pub encrypted_available_balance: EncryptedAmount,
-    pub encrypted_pending_balance: EncryptedAmount,
+    pub encryption_key: ElGamalPublicKey,
+    pub encrypted_available_balance: EncryptedQuantity,
+    pub encrypted_pending_balance: EncryptedQuantity,
     pub pending_increment_counter: u32,
-    pub enabled: bool
 }
 
 #[contract]
@@ -109,71 +115,56 @@ impl TokenInterface for ConfidentialToken {
 // The confidential transfer functionalities
 #[contractimpl]
 impl ConfidentialToken {
-    // deposit `amt` from `balance` to `encrypted_pending_balance`
-    // `amt` must be <= the existing `balance`
-    // Proofs: none required
-    // Errors: 1. if `acc` does not have confidential token extention 2. if amt is greater than the balance 
-    // events: todo
-    pub fn deposit_to_confidential(acc: Address, amt: i64) {
-        // 1. load the ConfidentialAccountExt(acc), fail if doesn't exist
-        // 2. check and sub acc's balance by amt
-        // 3. encrypt amt with acc's encryption key, store it in the extention
-        // 4. TODO: emit event
-        todo!()
-    }
-
-    // move `encrypted_pending_balance` into `encrypted_available_balance`.
-    // after the call `encrypted_pending_balance` is zero.
-    // Proofs: none required
-    // Errors: if `acc` does not have confidential token extention 
-    // events: todo
-    pub fn apply_pending_balance(acc: Address) {
-        // 0. try load the ConfidentialAccountExt or fail
-        // normalize the pending balance such that all chunks encode non-overflowing i16 again
-        // apply the pending balance to the available balance
-        // set the pending balance to 0
-        // reset the counter to 0
-        // TODO: events
-        todo!()
-    }
-
-    // confidentially transfer `encrypted_amt` from `from`'s available balance to `to`'s pending balance. 
-    // `from`'s encrypted balance must be >=  to the amt. 
-    // Proofs required: 1. equality proof. encrypted amt is the same amt under different encryption keys 2. range proof. `from`'s `encrypted_available_balance` is >=0 after the transfer. 3. equality proof (see notes below) 4. ciphertext validity proof
-    // events: todo
-    pub fn transfer_confidential(from: Address, to: Address, enc_amt: Vec<EncryptedChunk>) {
-        todo!()
-    }
-
-    // withdraws `amt` from `encrypted_available_balance` into the transparent balance
-    // proofs required: range proof on new balance amount 
-    // TODO: do we require normalization proof??
-    // probably just a equality proof is enough
-    // events: todo
-    pub fn withdraw_from_confidential(from: Address, amt: i64, proof: ??) {
-        // 0. try load the ConfidentialAccountExt or fail
-        // 
+    // Deposit a token amount into the confidential balance of an account
+    //     - Loads the confidential extension from `src` and `des`, fail if either does not exist.  
+    //     - If `des`'s `pending_balance_counter` is at max (`10^16`), fail.
+    //     - Subtracts `amt` from `src`'s regular (transparent) `balance`, fail if `balance` is less than `amt`.
+    //     - Loads the `pending_balance` from `des`. 
+    //     - Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`. 
+    //     - Increment `des`'s `pending_balance_counter`
+    //     - Emits an event TBD
+    pub fn deposit_to_confidential(src: Address, des: Address, amt: u64) {
         todo!()
     }
 
 
-    // secondary features:
-    pub fn rollover_pending_balance_and_freeze() {
-        // normalize pending balance
-        // roll over pending balance
-        // freeze the account
-        // replace the key, unfreeze the account 
+    // Roll over an account's pending balance into its available balance.
+    //     - Loads the confidential extension from `src`, fail if not exist.  
+    //     - Loads the `pending_balance` and `available_balance`.
+    //     - Verifies the `proof`, against `new_available_balance`.
+    //     - Sets the `available_balance` to the `new_available_balance`. 
+    //     - Sets the `pending_balance` to zero (encrypt `amt=0` with randomness `r=0`). 
+    //     - Resets the pending balance counter to 0.
+    //     - Emits an event TBD
+    pub fn rollover_pending_balance(src: Address, new_available_balance: EncryptedQuantity, proof: NormalizationProof) {
         todo!()
     }
-    pub fn rotate_encryption_key_and_unfreeze () 
-    {
-        // assert the account is frozen status
+
+    // Withdraw an amount from srcount's confidential balance to its transparent balance
+    //     - Loads `src`'s confidential extension, fail if not exist.
+    //     - Verifies the WithdrawProof. 
+    //         - ...
+    //     - Encrypt the `amt` with zero randomness (`r=0`) to get `encrypted_amt`.
+    //     - Adds `amt` to `src`'s (transparent) balance.
+    //     - Sets `src`'s `available_balance` to `src_new_balance`. 
+    //     - Emits an event TBD
+    pub fn withdraw_from_confidential(src: Address, amt: u64, src_new_balance: EncryptedQuantity, proof: WithdrawProof) {
+        todo!()
     }
-    fn normalize();
-    // allow/disallow list
-    // enable/disable token
-    // set auditor
-    // confidential_asset_balance Returns the circulating supply of the confidential asset.
+
+    // Transfers an amount confidentially between two accounts.
+    //     - Loads confidential extensions from `src` and `des` addresses, fail if either extension does not exist.
+    //     - If `des`'s `pending_balance_counter` is at max (`10^16`), fail.
+    //     - Verifies the transfer proof.
+    //         - equality proof: `amt_src`, `amt_des`, `amt_auditors` all encrypt the same amount
+    //         - ...
+    //     - Set `src` account's `available_balance` to `src_new_balance`.
+    //     - (homomorphically) Adds `des_amt` to `des` account's `pending_balance`.
+    //     - Increment `des`'s `pending_balance_counter`
+    //     - Emits an event TBD
+    pub fn transfer_confidential(src: Address, des: Address, amt_src: EncryptedQuantity, amt_des: EncryptedQuantity, auditor_keys: Vec<ElGamalPublicKey>, amt_auditors: Vec<EncryptedQuantity>, src_new_balance: EncryptedQuantity, proof: TransferProof) {
+        todo!()
+    }
 }
 
 
