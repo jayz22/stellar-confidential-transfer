@@ -12,7 +12,8 @@ crate-type = ["lib"]
 doctest = false
 
 [dependencies]
+rust-elgamal = { version = "0.4.0", default-features = false }
 solana-zk-sdk = {workspace = true}
 
 [dev-dependencies]
-rand = "0.8" 
+rand = "0.8"
