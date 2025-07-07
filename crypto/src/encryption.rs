@@ -87,6 +87,8 @@ pub fn decrypt(ciphertext: &[u8; 64], privkey: &elgamal::DecryptionKey) -> i128 
 
     // TODO: Decrease input size and change this loop to test every possible
     // input value
+    // TODO: This is the complete opposite of a timing-attack resilient
+    // decryption
     for i in 0..128 {
         let test_scalar = elgamal::Scalar::from(i as u128);
         let test_point = &test_scalar * &elgamal::GENERATOR_TABLE;
@@ -94,6 +96,8 @@ pub fn decrypt(ciphertext: &[u8; 64], privkey: &elgamal::DecryptionKey) -> i128 
             return i;
         }
     }
+
+    // TODO: Do something other than panic here?
     panic!("Decryption failed: could not find matching scalar for point");
 }
 
