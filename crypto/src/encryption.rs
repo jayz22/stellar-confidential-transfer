@@ -44,6 +44,8 @@ pub fn binop(
     points_to_bytes(&result_c, &result_d)
 }
 
+// TODO: `add` and `sub` might be shadowing some std functions. Maybe rename
+// them?
 pub fn add(lhs: &[u8; 64], rhs: &[u8; 64]) -> [u8; 64] {
     // TODO: Are there concerns about overflow here?
     binop(|&a, &b| a + b, &lhs, &rhs)
