@@ -52,9 +52,19 @@ pub fn decrypt_chunk(secret_key: &elgamal::ElGamalSecretKey,
 }
 
 pub struct EncryptedI128 {
-    commitments: Vec<pedersen::PedersenCommitment>,
+    commitments: [pedersen::PedersenCommitment; 8],
     handle: elgamal::DecryptHandle,
 }
+
+// impl Add for EncryptedI128 {
+//     type Output = Self;
+
+//     fn add(self, other: Self) -> Self {
+//         // Add commitments pairwise
+
+//         EncryptedI128 {
+//             self.comm
+//         }
 
 pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &pedersen::PedersenOpening)
     -> EncryptedI128
@@ -62,16 +72,17 @@ pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &p
     let chunks = chunk_i128(value);
     // Encrypt first chunk and split into commitment and decryption handle
     let first_chunk_ciphertext = encrypt_chunk(pubkey, chunks[0], rand_value);
-    let mut commitments = Vec::new();
-    commitments.push(first_chunk_ciphertext.commitment);
+    let mut commitments = [pedersen::PedersenCommitment::default(); 8];
+    commitments[0] = first_chunk_ciphertext.commitment;
     let handle = first_chunk_ciphertext.handle;
 
-    for &chunk in &chunks[1..] {
+    for (i, &chunk) in chunks[1..].iter().enumerate() {
         let ciphertext = encrypt_chunk(pubkey, chunk, rand_value);
-        commitments.push(ciphertext.commitment);
+        commitments[i+1] = ciphertext.commitment;
         assert_eq!(ciphertext.handle, handle, "All chunks must have the same decryption handle");
     }
-    assert_eq!(commitments.len(), 8, "Expected 8 encrypted chunks");
+    // TODO: Is this unnecessarily copying these fields? Can I just construct
+    // an EncryptedI128 directly and fill in the values from there?
     EncryptedI128 { commitments, handle }
 }
 
@@ -79,7 +90,6 @@ pub fn decrypt_i128(secret_key: &elgamal::ElGamalSecretKey,
                     ciphertext: &EncryptedI128)
     -> i128
 {
-    assert_eq!(ciphertext.commitments.len(), 8, "Expected 8 encrypted chunks");
     let mut chunks = [0u32; 8];
     for (i, commitment) in ciphertext.commitments.iter().enumerate() {
         let ciphertext = elgamal::ElGamalCiphertext {
