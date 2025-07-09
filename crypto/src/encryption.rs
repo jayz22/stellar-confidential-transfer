@@ -32,3 +32,22 @@ pub fn decrypt_chunk(secret_key: &elgamal::ElGamalSecretKey,
         None => panic!("Decryption failed")
     }
 }
+
+pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &pedersen::PedersenOpening)
+    -> (Vec<pedersen::PedersenCommitment>, elgamal::DecryptHandle)
+{
+    let chunks = chunk_i128(value);
+    // Encrypt first chunk and split into commitment and decryption handle
+    let first_chunk_ciphertext = encrypt_chunk(pubkey, chunks[0], rand_value);
+    let mut commitments = Vec::new();
+    commitments.push(first_chunk_ciphertext.commitment);
+    let handle = first_chunk_ciphertext.handle;
+
+    for &chunk in &chunks[1..] {
+        let ciphertext = encrypt_chunk(pubkey, chunk, rand_value);
+        commitments.push(ciphertext.commitment);
+        assert_eq!(ciphertext.handle, handle, "All chunks must have the same decryption handle");
+    }
+    assert_eq!(commitments.len(), 8, "Expected 8 encrypted chunks");
+    (commitments, handle)
+}
