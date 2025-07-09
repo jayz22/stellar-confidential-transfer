@@ -1,12 +1,12 @@
-use solana_zk_sdk::encryption::elgamal;
+use solana_zk_sdk::encryption::{elgamal, pedersen};
 
 
-pub fn encrypt_chunk(pubkey: &elgamal::ElGamalPubkey, amount: u16)
+pub fn encrypt_chunk(pubkey: &elgamal::ElGamalPubkey, amount: u16, rand_value: &pedersen::PedersenOpening)
     -> elgamal::ElGamalCiphertext
 {
     // TODO: Should this function take a random value as input and use
     // `encrypt_with` instead?
-    pubkey.encrypt(amount)
+    pubkey.encrypt_with(amount, rand_value)
 }
 
 pub fn decrypt_chunk(secret_key: &elgamal::ElGamalSecretKey,
