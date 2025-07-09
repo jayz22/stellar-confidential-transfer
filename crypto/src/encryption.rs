@@ -1,5 +1,3 @@
-use std::result;
-
 use rust_elgamal as elgamal;
 
 fn bytes_to_point(bytes: &[u8]) -> elgamal::RistrettoPoint {
@@ -56,6 +54,8 @@ pub fn sub(lhs: &[u8; 64], rhs: &[u8; 64]) -> [u8; 64] {
     binop(|&a, &b| a - b, &lhs, &rhs)
 }
 
+// TODO: Add an override that takes the pubkey as bytes, and the blinding factor
+// as an integer.
 // TODO: Looks like generating a random blinding factor requires std, so this
 // library assumes you've generated a secure blinding factor elsewhere. Is that
 // OK? This function wont be called by a contract "in the clear", so maybe it
