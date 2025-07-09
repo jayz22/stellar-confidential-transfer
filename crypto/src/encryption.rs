@@ -1,5 +1,8 @@
 use solana_zk_sdk::encryption::{elgamal, pedersen};
 
+// TODO: Can we use Add? Or is that a no-go because it's part of std?
+use std::ops::Add;
+
 // Convert an i128 into an array of 16-bit chunks.
 fn chunk_i128(value: i128) -> [u16; 8] {
     assert!(value >= 0, "Value must be non-negative");
@@ -56,15 +59,21 @@ pub struct EncryptedI128 {
     handle: elgamal::DecryptHandle,
 }
 
-// impl Add for EncryptedI128 {
-//     type Output = Self;
+impl Add for EncryptedI128 {
+    type Output = Self;
 
-//     fn add(self, other: Self) -> Self {
-//         // Add commitments pairwise
-
-//         EncryptedI128 {
-//             self.comm
-//         }
+    fn add(self, other: Self) -> Self {
+        // Add commitments pairwise
+        let mut new_commitments = [pedersen::PedersenCommitment::default(); 8];
+        for i in 0..8 {
+            new_commitments[i] = self.commitments[i] + other.commitments[i];
+        }
+        EncryptedI128 {
+            commitments: new_commitments,
+            handle: self.handle + other.handle
+        }
+    }
+}
 
 pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &pedersen::PedersenOpening)
     -> EncryptedI128
