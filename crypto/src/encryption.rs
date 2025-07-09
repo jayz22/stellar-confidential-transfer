@@ -51,8 +51,13 @@ pub fn decrypt_chunk(secret_key: &elgamal::ElGamalSecretKey,
     }
 }
 
+pub struct EncryptedI128 {
+    commitments: Vec<pedersen::PedersenCommitment>,
+    handle: elgamal::DecryptHandle,
+}
+
 pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &pedersen::PedersenOpening)
-    -> (Vec<pedersen::PedersenCommitment>, elgamal::DecryptHandle)
+    -> EncryptedI128
 {
     let chunks = chunk_i128(value);
     // Encrypt first chunk and split into commitment and decryption handle
@@ -67,20 +72,19 @@ pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &p
         assert_eq!(ciphertext.handle, handle, "All chunks must have the same decryption handle");
     }
     assert_eq!(commitments.len(), 8, "Expected 8 encrypted chunks");
-    (commitments, handle)
+    EncryptedI128 { commitments, handle }
 }
 
 pub fn decrypt_i128(secret_key: &elgamal::ElGamalSecretKey,
-                    commitments: &[pedersen::PedersenCommitment],
-                    handle: &elgamal::DecryptHandle)
+                    ciphertext: &EncryptedI128)
     -> i128
 {
-    assert_eq!(commitments.len(), 8, "Expected 8 encrypted chunks");
+    assert_eq!(ciphertext.commitments.len(), 8, "Expected 8 encrypted chunks");
     let mut chunks = [0u32; 8];
-    for (i, commitment) in commitments.iter().enumerate() {
+    for (i, commitment) in ciphertext.commitments.iter().enumerate() {
         let ciphertext = elgamal::ElGamalCiphertext {
             commitment: commitment.clone(),
-            handle: handle.clone(),
+            handle: ciphertext.handle.clone(),
         };
         chunks[i] = decrypt_chunk(secret_key, &ciphertext);
     }

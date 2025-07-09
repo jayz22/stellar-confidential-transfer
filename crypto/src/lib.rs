@@ -27,8 +27,8 @@ mod tests {
 
         let value = 123456789i128; // Example value for testing
         let rand_value = PedersenOpening::new_rand();
-        let (commitments, handle) = encrypt_i128(&pubkey, value, &rand_value);
-        let decrypted_value = decrypt_i128(&secret_key, &commitments, &handle);
+        let ciphertext = encrypt_i128(&pubkey, value, &rand_value);
+        let decrypted_value = decrypt_i128(&secret_key, &ciphertext);
         assert_eq!(decrypted_value, value);
     }
 }
