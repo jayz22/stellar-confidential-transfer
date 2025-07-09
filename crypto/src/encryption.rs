@@ -12,6 +12,23 @@ fn chunk_i128(value: i128) -> [u16; 8] {
     chunks
 }
 
+// This joins potentially overlapping 32-bit chunks into a single i128
+// TODO: Test this function. Include edge case where the final chunk is too
+// large.
+fn join_i128(chunks: &[u32; 8]) -> i128 {
+    let mut value = 0i128;
+    for (i, &chunk) in chunks.iter().enumerate() {
+        // TODO: Need to handle potential overflow in the final chunk. Should
+        // panic if the final chunk is larger than u16::MAX. Technically I think
+        // it should be less than u16::MAX too, because we are using i128s to
+        // represent values that cannot be negative, so we really only have 127
+        // bits to work with.
+        value += (chunk as i128) << (i * 16);
+    }
+    value
+}
+
+// TODO: Mark private
 pub fn encrypt_chunk(pubkey: &elgamal::ElGamalPubkey, amount: u16, rand_value: &pedersen::PedersenOpening)
     -> elgamal::ElGamalCiphertext
 {
@@ -20,6 +37,7 @@ pub fn encrypt_chunk(pubkey: &elgamal::ElGamalPubkey, amount: u16, rand_value: &
     pubkey.encrypt_with(amount, rand_value)
 }
 
+// TODO: Mark private
 pub fn decrypt_chunk(secret_key: &elgamal::ElGamalSecretKey,
                      ciphertext: &elgamal::ElGamalCiphertext)
     -> u32
@@ -50,4 +68,21 @@ pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &p
     }
     assert_eq!(commitments.len(), 8, "Expected 8 encrypted chunks");
     (commitments, handle)
+}
+
+pub fn decrypt_i128(secret_key: &elgamal::ElGamalSecretKey,
+                    commitments: &[pedersen::PedersenCommitment],
+                    handle: &elgamal::DecryptHandle)
+    -> i128
+{
+    assert_eq!(commitments.len(), 8, "Expected 8 encrypted chunks");
+    let mut chunks = [0u32; 8];
+    for (i, commitment) in commitments.iter().enumerate() {
+        let ciphertext = elgamal::ElGamalCiphertext {
+            commitment: commitment.clone(),
+            handle: handle.clone(),
+        };
+        chunks[i] = decrypt_chunk(secret_key, &ciphertext);
+    }
+    join_i128(&chunks)
 }
