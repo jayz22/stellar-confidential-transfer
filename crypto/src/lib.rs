@@ -12,7 +12,7 @@ mod tests {
         let secret_key = ElGamalSecretKey::new_rand();
         let pubkey = ElGamalPubkey::new(&secret_key);
 
-        let amount: u16 = 42;
+        let amount: u16 = u16::MAX; // Use a maximum value for testing
         let rand_value = PedersenOpening::new_rand();
         let ciphertext: ElGamalCiphertext = encrypt_chunk(&pubkey, amount, &rand_value);
         let decrypted_amount: u32 = decrypt_chunk(&secret_key, &ciphertext);

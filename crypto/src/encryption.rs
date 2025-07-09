@@ -1,5 +1,16 @@
 use solana_zk_sdk::encryption::{elgamal, pedersen};
 
+// Convert an i128 into an array of 16-bit chunks.
+fn chunk_i128(value: i128) -> [u16; 8] {
+    assert!(value >= 0, "Value must be non-negative");
+    let mut chunks = [0u16; 8];
+    for i in 0..8 {
+        let masked = (value >> (i * 16)) & 0xFFFF;
+        assert!(masked <= u16::MAX as i128, "Chunk exceeds u16 max");
+        chunks[i] = masked as u16;
+    }
+    chunks
+}
 
 pub fn encrypt_chunk(pubkey: &elgamal::ElGamalPubkey, amount: u16, rand_value: &pedersen::PedersenOpening)
     -> elgamal::ElGamalCiphertext
