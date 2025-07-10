@@ -3,6 +3,8 @@ pub mod encryption;
 
 #[cfg(test)]
 mod tests {
+    use std::collections::btree_map::ValuesMut;
+
     use super::encryption::*;
     use solana_zk_sdk::encryption::elgamal::{ElGamalCiphertext, ElGamalPubkey, ElGamalSecretKey};
     use solana_zk_sdk::encryption::pedersen::PedersenOpening;
@@ -42,8 +44,35 @@ mod tests {
         let value2 = 987654321i128;
         let encrypted1 = encrypt_i128(&pubkey, value1, &rand_value1);
         let encrypted2 = encrypt_i128(&pubkey, value2, &rand_value2);
-        let encrypted_sum = encrypted1 + encrypted2;
+        let encrypted_sum = add_encrypted_i128(&encrypted1, &encrypted2);
         let decrypted_sum = decrypt_i128(&secret_key, &encrypted_sum);
         assert_eq!(decrypted_sum, value1 + value2);
+    }
+
+    #[test]
+    fn test_sub_encrypted_i128() {
+        let secret_key = ElGamalSecretKey::new_rand();
+        let pubkey = ElGamalPubkey::new(&secret_key);
+        let rand_value1 = PedersenOpening::new_rand();
+        let rand_value2 = PedersenOpening::new_rand();
+        // TODO: Subtraction is a little broken right now. Currently *every*
+        // chunk needs to remain positive or this will fail to decrypt.
+        // However, if a lower chunk needs to "borrow" from a higher chunk, it
+        // will fail. See the commented out example below. How do other chains
+        // handle this? Can we interpret these as signed integers instead?
+        // value1 has an "all zero" lower chunk
+        // let value1: i128 = 0x10000;
+        // value2 is much smaller than value1, but has a non-zero lowest chunk.
+        // Therefore, subtraction will need to borrow from the higher chunks.
+        // But this currently fails during decryption.
+        // let value2 = 0x1;
+        // TODO: Be sure to test more complicated cases where the borrowing comes from multiple chunks away (e.g. 0x100000000 - 0x1)
+        let value1 = 10;
+        let value2 = 5;
+        let encrypted1 = encrypt_i128(&pubkey, value1, &rand_value1);
+        let encrypted2 = encrypt_i128(&pubkey, value2, &rand_value2);
+        let encrypted_diff = sub_encrypted_i128(&encrypted1, &encrypted2);
+        let decrypted_diff = decrypt_i128(&secret_key, &encrypted_diff);
+        assert_eq!(decrypted_diff, value1 - value2);
     }
 }
