@@ -1,4 +1,5 @@
 use solana_zk_sdk::encryption::{elgamal, pedersen};
+use std::convert::TryFrom;
 
 // Convert an i128 into an array of 16-bit chunks.
 fn chunk_i128(value: i128) -> [u16; 8] {
@@ -56,18 +57,20 @@ pub struct EncryptedI128 {
     handle: elgamal::DecryptHandle,
 }
 
-pub fn encrypt_i128(pubkey: &elgamal::ElGamalPubkey, value: i128, rand_value: &pedersen::PedersenOpening)
+pub fn encrypt_i128(pubkey_bytes: &[u8; 32], value: i128, rand_value: &pedersen::PedersenOpening)
     -> EncryptedI128
 {
+    // TODO: Error handling on unwrap call?
+    let pubkey = elgamal::ElGamalPubkey::try_from(pubkey_bytes as &[u8]).unwrap();
     let chunks = chunk_i128(value);
     // Encrypt first chunk and split into commitment and decryption handle
-    let first_chunk_ciphertext = encrypt_chunk(pubkey, chunks[0], rand_value);
+    let first_chunk_ciphertext = encrypt_chunk(&pubkey, chunks[0], rand_value);
     let mut commitments = [pedersen::PedersenCommitment::default(); 8];
     commitments[0] = first_chunk_ciphertext.commitment;
     let handle = first_chunk_ciphertext.handle;
 
     for (i, &chunk) in chunks[1..].iter().enumerate() {
-        let ciphertext = encrypt_chunk(pubkey, chunk, rand_value);
+        let ciphertext = encrypt_chunk(&pubkey, chunk, rand_value);
         commitments[i+1] = ciphertext.commitment;
         assert_eq!(ciphertext.handle, handle, "All chunks must have the same decryption handle");
     }
