@@ -6,6 +6,7 @@ mod tests {
     use solana_zk_sdk::encryption::elgamal::{ElGamalPubkey, ElGamalSecretKey};
     use solana_zk_sdk::encryption::pedersen::PedersenOpening;
 
+    // Test the full encrypt-decrypt cycle for a 128-bit integer.
     #[test]
     fn test_encrypt_decrypt_i128() {
         let secret_key = ElGamalSecretKey::new_rand();
@@ -19,6 +20,7 @@ mod tests {
         assert_eq!(decrypted_value, value);
     }
 
+    // Test homomorphic addition of two encrypted 128-bit integers.
     #[test]
     fn test_add_encrypted_i128() {
         let secret_key = ElGamalSecretKey::new_rand();
@@ -35,6 +37,10 @@ mod tests {
         assert_eq!(decrypted_sum, value1 + value2);
     }
 
+    // Test homomorphic subtraction of two encrypted 128-bit integers.
+    // TODO: This test only passes with simple values that do not require
+    // borrowing between chunks due to known bugs with subtraction that likely
+    // need to be addressed during decryption.
     #[test]
     fn test_sub_encrypted_i128() {
         let secret_key = ElGamalSecretKey::new_rand();
