@@ -52,15 +52,54 @@ pub fn decrypt_chunk(secret_key: &elgamal::ElGamalSecretKey,
     }
 }
 
+// TODO: Mark private, including fields?
 pub struct EncryptedI128 {
-    commitments: [pedersen::PedersenCommitment; 8],
-    handle: elgamal::DecryptHandle,
+    pub commitments: [pedersen::PedersenCommitment; 8],
+    pub handle: elgamal::DecryptHandle,
+}
+
+impl EncryptedI128 {
+    pub fn to_bytes(&self) -> EncryptedI128Bytes {
+        let mut commitments_bytes = [[0u8; 32]; 8];
+        for (i, commitment) in self.commitments.iter().enumerate() {
+            commitments_bytes[i] = commitment.to_bytes();
+        }
+
+        EncryptedI128Bytes {
+            commitments: commitments_bytes,
+            handle: self.handle.to_bytes(),
+        }
+    }
+
+    pub fn from_bytes(bytes: &EncryptedI128Bytes) -> EncryptedI128  {
+        let mut commitments = [pedersen::PedersenCommitment::default(); 8];
+        for (i, commitment_bytes) in bytes.commitments.iter().enumerate() {
+            match pedersen::PedersenCommitment::from_bytes(commitment_bytes) {
+                Some(commitment) => commitments[i] = commitment,
+                None => panic!("TODO: Invalid commitment bytes"),
+            }
+        }
+
+        match elgamal::DecryptHandle::from_bytes(&bytes.handle) {
+            Some(handle) => EncryptedI128 {
+                commitments,
+                handle,
+            },
+            None => panic!("TODO: Invalid handle bytes"),
+        }
+    }
+}
+
+pub struct EncryptedI128Bytes {
+    pub commitments: [[u8; 32]; 8],
+    pub handle: [u8; 32],
 }
 
 pub fn encrypt_i128(pubkey_bytes: &[u8; 32], value: i128, rand_value: &pedersen::PedersenOpening)
-    -> EncryptedI128
+    -> EncryptedI128Bytes
 {
-    // TODO: Error handling on unwrap call?
+    // TODO: Error handling on failed conversion from bytes? Unwrap call panics
+    // on failure.
     let pubkey = elgamal::ElGamalPubkey::try_from(pubkey_bytes as &[u8]).unwrap();
     let chunks = chunk_i128(value);
     // Encrypt first chunk and split into commitment and decryption handle
@@ -76,13 +115,14 @@ pub fn encrypt_i128(pubkey_bytes: &[u8; 32], value: i128, rand_value: &pedersen:
     }
     // TODO: Is this unnecessarily copying these fields? Can I just construct
     // an EncryptedI128 directly and fill in the values from there?
-    EncryptedI128 { commitments, handle }
+    EncryptedI128 { commitments, handle }.to_bytes()
 }
 
 pub fn decrypt_i128(secret_key: &elgamal::ElGamalSecretKey,
-                    ciphertext: &EncryptedI128)
+                    ciphertext_bytes: &EncryptedI128Bytes)
     -> i128
 {
+    let ciphertext = EncryptedI128::from_bytes(ciphertext_bytes);
     let mut chunks = [0u32; 8];
     for (i, commitment) in ciphertext.commitments.iter().enumerate() {
         let ciphertext = elgamal::ElGamalCiphertext {
@@ -95,9 +135,13 @@ pub fn decrypt_i128(secret_key: &elgamal::ElGamalSecretKey,
 }
 
 pub fn add_encrypted_i128(
-    lhs: &EncryptedI128,
-    rhs: &EncryptedI128,
-) -> EncryptedI128 {
+    lhs_bytes: &EncryptedI128Bytes,
+    rhs_bytes: &EncryptedI128Bytes,
+) -> EncryptedI128Bytes {
+    // Deserialize
+    let lhs = EncryptedI128::from_bytes(lhs_bytes);
+    let rhs = EncryptedI128::from_bytes(rhs_bytes);
+
     // Add commitments pairwise
     let mut new_commitments = [pedersen::PedersenCommitment::default(); 8];
     for i in 0..8 {
@@ -106,13 +150,19 @@ pub fn add_encrypted_i128(
     EncryptedI128 {
         commitments: new_commitments,
         handle: lhs.handle + rhs.handle
-    }
+    }.to_bytes()
 }
 
+// TODO: Deduplicate with `add_encrypted_i128`. Perhaps use a generic binop
+// function? Do this only after fixing issue with subtraction borrowing.
 pub fn sub_encrypted_i128(
-    lhs: &EncryptedI128,
-    rhs: &EncryptedI128,
-) -> EncryptedI128 {
+    lhs_bytes: &EncryptedI128Bytes,
+    rhs_bytes: &EncryptedI128Bytes,
+) -> EncryptedI128Bytes {
+    // Deserialize
+    let lhs = EncryptedI128::from_bytes(lhs_bytes);
+    let rhs = EncryptedI128::from_bytes(rhs_bytes);
+
     // Subtract commitments pairwise
     let mut new_commitments = [pedersen::PedersenCommitment::default(); 8];
     for i in 0..8 {
@@ -121,5 +171,5 @@ pub fn sub_encrypted_i128(
     EncryptedI128 {
         commitments: new_commitments,
         handle: lhs.handle - rhs.handle
-    }
+    }.to_bytes()
 }
