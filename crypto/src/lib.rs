@@ -3,21 +3,8 @@ pub mod encryption;
 #[cfg(test)]
 mod tests {
     use super::encryption::*;
-    use solana_zk_sdk::encryption::elgamal::{ElGamalCiphertext, ElGamalPubkey, ElGamalSecretKey};
+    use solana_zk_sdk::encryption::elgamal::{ElGamalPubkey, ElGamalSecretKey};
     use solana_zk_sdk::encryption::pedersen::PedersenOpening;
-
-    #[test]
-    fn test_chunk_encryption_decryption() {
-        let secret_key = ElGamalSecretKey::new_rand();
-        let pubkey = ElGamalPubkey::new(&secret_key);
-
-        let amount: u16 = u16::MAX; // Use a maximum value for testing
-        let rand_value = PedersenOpening::new_rand();
-        let ciphertext: ElGamalCiphertext = encrypt_chunk(&pubkey, amount, &rand_value);
-        let decrypted_amount: u32 = decrypt_chunk(&secret_key, &ciphertext);
-
-        assert_eq!(decrypted_amount, amount as u32);
-    }
 
     #[test]
     fn test_encrypt_decrypt_i128() {
@@ -76,37 +63,4 @@ mod tests {
         assert_eq!(decrypted_diff, value1 - value2);
     }
 
-    #[test]
-    fn test_serialize_deserialize_encrypted_i128() {
-        let secret_key = ElGamalSecretKey::new_rand();
-        let pubkey = ElGamalPubkey::new(&secret_key);
-        let pubkey_bytes: [u8; 32] = pubkey.into();
-        let rand_value = PedersenOpening::new_rand();
-        let value = 123456789i128;
-
-        // Create an encrypted value (now returns EncryptedI128Bytes)
-        let encrypted_bytes = encrypt_i128(&pubkey_bytes, value, &rand_value);
-
-        // Convert to EncryptedI128 to test serialization
-        let original_encrypted = EncryptedI128::from_bytes(&encrypted_bytes);
-
-        // Serialize the encrypted value
-        let serialized = original_encrypted.to_bytes();
-
-        // Deserialize back
-        let deserialized = EncryptedI128::from_bytes(&serialized);
-
-        // Check that they are equal by comparing all fields
-        for i in 0..8 {
-            assert_eq!(
-                original_encrypted.commitments[i],
-                deserialized.commitments[i]
-            );
-        }
-        assert_eq!(original_encrypted.handle, deserialized.handle);
-
-        // Also verify that decryption still works correctly
-        let decrypted_value = decrypt_i128(&secret_key, &serialized);
-        assert_eq!(decrypted_value, value);
-    }
 }

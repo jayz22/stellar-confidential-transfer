@@ -29,8 +29,7 @@ fn join_i128(chunks: &[u32; 8]) -> i128 {
     value
 }
 
-// TODO: Mark private
-pub fn encrypt_chunk(
+fn encrypt_chunk(
     pubkey: &elgamal::ElGamalPubkey,
     amount: u16,
     rand_value: &pedersen::PedersenOpening,
@@ -40,8 +39,7 @@ pub fn encrypt_chunk(
     pubkey.encrypt_with(amount, rand_value)
 }
 
-// TODO: Mark private
-pub fn decrypt_chunk(
+fn decrypt_chunk(
     secret_key: &elgamal::ElGamalSecretKey,
     ciphertext: &elgamal::ElGamalCiphertext,
 ) -> u32 {
@@ -55,13 +53,13 @@ pub fn decrypt_chunk(
 }
 
 // TODO: Mark private, including fields?
-pub struct EncryptedI128 {
-    pub commitments: [pedersen::PedersenCommitment; 8],
-    pub handle: elgamal::DecryptHandle,
+struct EncryptedI128 {
+    commitments: [pedersen::PedersenCommitment; 8],
+    handle: elgamal::DecryptHandle,
 }
 
 impl EncryptedI128 {
-    pub fn to_bytes(&self) -> EncryptedI128Bytes {
+    fn to_bytes(&self) -> EncryptedI128Bytes {
         let mut commitments_bytes = [[0u8; 32]; 8];
         for (i, commitment) in self.commitments.iter().enumerate() {
             commitments_bytes[i] = commitment.to_bytes();
@@ -73,7 +71,7 @@ impl EncryptedI128 {
         }
     }
 
-    pub fn from_bytes(bytes: &EncryptedI128Bytes) -> EncryptedI128 {
+    fn from_bytes(bytes: &EncryptedI128Bytes) -> EncryptedI128 {
         let mut commitments = [pedersen::PedersenCommitment::default(); 8];
         for (i, commitment_bytes) in bytes.commitments.iter().enumerate() {
             match pedersen::PedersenCommitment::from_bytes(commitment_bytes) {
@@ -185,4 +183,59 @@ pub fn sub_encrypted_i128(
         handle: lhs.handle - rhs.handle,
     }
     .to_bytes()
+}
+
+// Tests for private functions
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_zk_sdk::encryption::elgamal::{ElGamalCiphertext, ElGamalPubkey, ElGamalSecretKey};
+    use solana_zk_sdk::encryption::pedersen::PedersenOpening;
+
+    #[test]
+    fn test_chunk_encryption_decryption() {
+        let secret_key = ElGamalSecretKey::new_rand();
+        let pubkey = ElGamalPubkey::new(&secret_key);
+
+        let amount: u16 = u16::MAX; // Use a maximum value for testing
+        let rand_value = PedersenOpening::new_rand();
+        let ciphertext: ElGamalCiphertext = encrypt_chunk(&pubkey, amount, &rand_value);
+        let decrypted_amount: u32 = decrypt_chunk(&secret_key, &ciphertext);
+
+        assert_eq!(decrypted_amount, amount as u32);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_encrypted_i128() {
+        let secret_key = ElGamalSecretKey::new_rand();
+        let pubkey = ElGamalPubkey::new(&secret_key);
+        let pubkey_bytes: [u8; 32] = pubkey.into();
+        let rand_value = PedersenOpening::new_rand();
+        let value = 123456789i128;
+
+        // Create an encrypted value (now returns EncryptedI128Bytes)
+        let encrypted_bytes = encrypt_i128(&pubkey_bytes, value, &rand_value);
+
+        // Convert to EncryptedI128 to test serialization
+        let original_encrypted = EncryptedI128::from_bytes(&encrypted_bytes);
+
+        // Serialize the encrypted value
+        let serialized = original_encrypted.to_bytes();
+
+        // Deserialize back
+        let deserialized = EncryptedI128::from_bytes(&serialized);
+
+        // Check that they are equal by comparing all fields
+        for i in 0..8 {
+            assert_eq!(
+                original_encrypted.commitments[i],
+                deserialized.commitments[i]
+            );
+        }
+        assert_eq!(original_encrypted.handle, deserialized.handle);
+
+        // Also verify that decryption still works correctly
+        let decrypted_value = decrypt_i128(&secret_key, &serialized);
+        assert_eq!(decrypted_value, value);
+    }
 }
