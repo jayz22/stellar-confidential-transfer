@@ -1,6 +1,5 @@
 pub mod encryption;
 
-
 #[cfg(test)]
 mod tests {
     use super::encryption::*;
@@ -99,7 +98,10 @@ mod tests {
 
         // Check that they are equal by comparing all fields
         for i in 0..8 {
-            assert_eq!(original_encrypted.commitments[i], deserialized.commitments[i]);
+            assert_eq!(
+                original_encrypted.commitments[i],
+                deserialized.commitments[i]
+            );
         }
         assert_eq!(original_encrypted.handle, deserialized.handle);
 
@@ -107,5 +109,4 @@ mod tests {
         let decrypted_value = decrypt_i128(&secret_key, &serialized);
         assert_eq!(decrypted_value, value);
     }
-
 }
