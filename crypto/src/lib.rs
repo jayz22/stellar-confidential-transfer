@@ -38,7 +38,7 @@ mod tests {
     }
 
     // Test homomorphic subtraction of two encrypted 128-bit integers.
-    // TODO: This test only passes with simple values that do not require
+    // TODO(Brett): This test only passes with simple values that do not require
     // borrowing between chunks due to known bugs with subtraction that likely
     // need to be addressed during decryption.
     #[test]
@@ -48,8 +48,8 @@ mod tests {
         let pubkey_bytes: [u8; 32] = pubkey.into();
         let rand_value1 = PedersenOpening::new_rand();
         let rand_value2 = PedersenOpening::new_rand();
-        // TODO: Subtraction is a little broken right now. Currently *every*
-        // chunk needs to remain positive or this will fail to decrypt.
+        // TODO(Brett): Subtraction is a little broken right now. Currently
+        // *every* chunk needs to remain positive or this will fail to decrypt.
         // However, if a lower chunk needs to "borrow" from a higher chunk, it
         // will fail. See the commented out example below. How do other chains
         // handle this? Can we interpret these as signed integers instead?
@@ -59,7 +59,8 @@ mod tests {
         // Therefore, subtraction will need to borrow from the higher chunks.
         // But this currently fails during decryption.
         // let value2 = 0x1;
-        // TODO: Be sure to test more complicated cases where the borrowing comes from multiple chunks away (e.g. 0x100000000 - 0x1)
+        // TODO(Brett): Be sure to test more complicated cases where the
+        // borrowing comes from multiple chunks away (e.g. 0x100000000 - 0x1)
         let value1 = 10;
         let value2 = 5;
         let encrypted1 = encrypt_i128(&pubkey_bytes, value1, &rand_value1);

@@ -135,7 +135,8 @@ impl EncryptedI128 {
         for (i, commitment_bytes) in bytes.commitments.iter().enumerate() {
             match pedersen::PedersenCommitment::from_bytes(commitment_bytes) {
                 Some(commitment) => commitments[i] = commitment,
-                None => panic!("TODO: Invalid commitment bytes"),
+                // TODO(Brett): Should we do something other than panic here?
+                None => panic!("Invalid commitment bytes"),
             }
         }
 
@@ -144,7 +145,8 @@ impl EncryptedI128 {
                 commitments,
                 handle,
             },
-            None => panic!("TODO: Invalid handle bytes"),
+            // TODO(Brett): Should we do something other than panic here?
+            None => panic!("Invalid handle bytes"),
         }
     }
 }
@@ -181,8 +183,8 @@ pub fn encrypt_i128(
     value: i128,
     rand_value: &pedersen::PedersenOpening,
 ) -> EncryptedI128Bytes {
-    // TODO: Error handling on failed conversion from bytes? Unwrap call panics
-    // on failure.
+    // TODO(Brett): Error handling on failed conversion from bytes? Unwrap call
+    // panics on failure.
     let pubkey = elgamal::ElGamalPubkey::try_from(pubkey_bytes as &[u8]).unwrap();
     let chunks = chunk_i128(value);
     // Encrypt first chunk and split into commitment and decryption handle
@@ -281,8 +283,8 @@ pub fn add_encrypted_i128(
 ///
 /// # Returns
 /// The encrypted difference as `EncryptedI128Bytes`
-// TODO: Deduplicate with `add_encrypted_i128`. Perhaps use a generic binop
-// function? Do this only after fixing issue with subtraction borrowing.
+// TODO(Brett): Deduplicate with `add_encrypted_i128`. Perhaps use a generic
+// binop function? Do this only after fixing issue with subtraction borrowing.
 pub fn sub_encrypted_i128(
     lhs_bytes: &EncryptedI128Bytes,
     rhs_bytes: &EncryptedI128Bytes,
@@ -294,7 +296,7 @@ pub fn sub_encrypted_i128(
     // Subtract commitments pairwise
     let mut new_commitments = [pedersen::PedersenCommitment::default(); 8];
     for i in 0..8 {
-        // TODO: This is subtly broken right now as it does not handle
+        // TODO(Brett): This is subtly broken right now as it does not handle
         // borrowing from higher chunks to prevent lower chunks from going
         // negative. See the comment in `test_sub_encrypted_i128` for more
         // details.
