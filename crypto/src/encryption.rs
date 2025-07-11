@@ -14,18 +14,12 @@ fn chunk_i128(value: i128) -> [u16; 8] {
 }
 
 // This joins potentially overlapping 32-bit chunks into a single i128
-// TODO: Test this function. Include edge case where the final chunk is too
-// large.
 fn join_i128(chunks: &[u32; 8]) -> i128 {
     let mut value = 0i128;
     for (i, &chunk) in chunks.iter().enumerate() {
-        // TODO: Need to handle potential overflow in the final chunk. Should
-        // panic if the final chunk is larger than u16::MAX. Technically I think
-        // it should be less than u16::MAX too, because we are using i128s to
-        // represent values that cannot be negative, so we really only have 127
-        // bits to work with.
         value += (chunk as i128) << (i * 16);
     }
+    assert!(value >= 0, "Joined value must be non-negative");
     value
 }
 
@@ -34,8 +28,6 @@ fn encrypt_chunk(
     amount: u16,
     rand_value: &pedersen::PedersenOpening,
 ) -> elgamal::ElGamalCiphertext {
-    // TODO: Should this function take a random value as input and use
-    // `encrypt_with` instead?
     pubkey.encrypt_with(amount, rand_value)
 }
 
@@ -52,7 +44,6 @@ fn decrypt_chunk(
     }
 }
 
-// TODO: Mark private, including fields?
 struct EncryptedI128 {
     commitments: [pedersen::PedersenCommitment; 8],
     handle: elgamal::DecryptHandle,
@@ -118,8 +109,6 @@ pub fn encrypt_i128(
             "All chunks must have the same decryption handle"
         );
     }
-    // TODO: Is this unnecessarily copying these fields? Can I just construct
-    // an EncryptedI128 directly and fill in the values from there?
     EncryptedI128 {
         commitments,
         handle,
@@ -176,6 +165,10 @@ pub fn sub_encrypted_i128(
     // Subtract commitments pairwise
     let mut new_commitments = [pedersen::PedersenCommitment::default(); 8];
     for i in 0..8 {
+        // TODO: This is subtily broken right now as it does not handle
+        // borrowing from higher chunks to prevent lower chunks from going
+        // negative. See the comment in `test_sub_encrypted_i128` for more
+        // details.
         new_commitments[i] = lhs.commitments[i] - rhs.commitments[i];
     }
     EncryptedI128 {
@@ -238,4 +231,53 @@ mod tests {
         let decrypted_value = decrypt_i128(&secret_key, &serialized);
         assert_eq!(decrypted_value, value);
     }
+
+    #[test]
+    fn test_simple_chunk_join_i128() {
+        let val = 123456789i128;
+        let chunked = chunk_i128(val);
+        let chunked_as_u32: [u32; 8] = chunked.map(|x| x as u32);
+        let joined = join_i128(&chunked_as_u32);
+        assert_eq!(joined, val);
+    }
+
+    // Test chunks with values that would overlap into the next 16-bit position
+    #[test]
+    fn test_join_i128_with_overlapping_chunks() {
+        let chunks: [u32; 8] = [
+            0x1FFFF,  // Overlaps into next position (requires 17 bits)
+            0x20000,  // Overlaps into next position
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+            0x0,
+        ];
+
+        // Expected value
+        let expected = 0x20001FFFF; // 0x1FFFF + (0x20000 << 16)
+
+        let result = join_i128(&chunks);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Joined value must be non-negative")]
+    fn test_join_i128_negative_overflow() {
+        // Test case: Values that would cause overflow into the sign bit
+        // This should trigger the negative value assertion
+        let chunks: [u32; 8] = [0, 0, 0, 0, 0, 0, 0, 0x8000];
+        // This would set the most significant bit, making the i128 negative
+        join_i128(&chunks);
+    }
+
+    #[test]
+    fn test_join_i128_maximum_positive() {
+        // Test the maximum positive i128 value
+        let chunks: [u32; 8] = [0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x7FFF];
+        let expected = i128::MAX;
+        assert_eq!(join_i128(&chunks), expected);
+    }
+
 }
