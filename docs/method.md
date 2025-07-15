@@ -182,28 +182,44 @@ Notes:
 Proves that before and after normalization the same balance quantity is being encrypted *and* each chunk in the new balance encrypts a value that fits within the range ($0-2^{16}$)
 
 #### Setup
-Assume without losing generality, the balance contains two chunks that are offset by 16 bits (initially when created, each chunk was 16-bits), and little-endian. At any given point (after many transfers), the balance ciphertext contains two chunks $(\tilde{C_0}, \tilde{C_1})$ and decryption handles $\tilde{D}$ and $\tilde{D_A}$ (for the auditor public key $Y_A$, assuming there is only one), under some randomness $\tilde{r}$ (not known to anyone).
+Normalization is performed on the actual balance, which is 8 chunks with each consecutive chunks offset by 16 bits. Assiming little-endian.
+Before the normalization, the encrypted balance is $(\tilde{C_0}, \ldots, \tilde{C_7})$. and decryption handles $\tilde{D}$. The randomness is not known to anyone after many transactions.
 
-After the balance is normalized, it contains two chunks $(C_0, C_1)$ and decryption handles $D$ and $D_A$ under some new randomness $r$.
+After normalization, the encrypted balances is $(C_0, \ldots, C_7)$, the decryption handle is $D$. With fresh randomness $r$. The actual chunk values being encrypted after normalization are $(b_0, \ldots ,b_7)$.
+
+$$ 
+\tilde{C_0} = \tilde{b_0}G + \tilde{r}H,
+$$ 
+$$ 
+\vdots
+$$ 
+$$ 
+\tilde{C_7} = \tilde{b_7}G + \tilde{r}H
+$$
+$$\tilde{D} = \tilde{r}Y$$
 
 #### Proof Description
 
-Public inputs $(\tilde{C_0}, \tilde{C_1}, \tilde{D}, C_0, C_1, D, Y, G, H)$, witnesses $(b_0, b_1, r, sk)$
+Public inputs $(\tilde{C_0}, \ldots, \tilde{C_7}, \tilde{D}, C_0, \ldots, C_7, D, Y, G, H)$, witnesses $(b_0, \ldots ,b_7, r, sk)$
 
 Statements to be proven:
 
 1. The old encrypted amount equals the new encrypted amount:
 
-$$\tilde{C_0} + 2^{16} \tilde{C_1} - C_0 - 2^{16} C_1 = 0 \cdot G + (1+2^{16})sk \cdot (\tilde{D}-D)$$
+$$\tilde{C_0} + 2^{16} \tilde{C_1} + \ldots + 2^{112} \tilde{C_7} - (C_0 + 2^{16} C_1 + \ldots + 2^{112} C_7) = 0 \cdot G + (1+2^{16} + \ldots + 2^{112} )sk \cdot (\tilde{D}-D)$$
 
 2. The new amount is correctly encoded with randomness $r$ and the correct decryption handles are assigned, i.e.
-$$C_0 = b_0G + rH$$
-$$C_1 = b_1G + rH$$
+$$C_0 = b_0G + rH$$ 
+$$\vdots$$ 
+$$C_7 = b_7G + rH$$
 $$D = rY$$
-$$D_A = rY_A$$
 
 3. The secret key corresponds to the account's public key
 $$Y = sk^{-1}H$$
+
+#### Sigma protocol
+
+
 
 In addition, two range proofs are needed that both $b_0$ and $b_1$ fit within 16 bits.
 

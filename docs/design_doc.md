@@ -234,7 +234,8 @@ Refer to [the method](./method.md) document.
 - close/pause/freeze confidential account
 - key rotation
 - token-level admin control, allow/black-list
-- extended auditing
+- extended auditing. in Aptos there can be 1 asset-level auditor (must be the first in every encrypted quantity list), then each transfer can specify any number of additional auditors that follows. 
+- allowed token list -- only tokens in the allow-list can be transferred
 
 ## Discussions
 
