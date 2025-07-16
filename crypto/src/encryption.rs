@@ -27,21 +27,22 @@ fn chunk_i128(value: i128) -> [u16; 8] {
 }
 
 /// Reconstructs a 128-bit signed integer from an array of potentially
-/// overlapping 32-bit chunks.
+/// overlapping signed 64-bit chunks.
 ///
 /// Each chunk is shifted by 16 bits relative to the previous chunk and summed
 /// together.  This function is used to reconstruct decrypted values where each
-/// chunk may contain values larger than 16 bits due to homomorphic operations.
+/// chunk may contain values larger than 16 bits or negative values due to
+/// homomorphic operations.
 ///
 /// # Arguments
-/// * `chunks` - Array of 8 u32 values to join
+/// * `chunks` - Array of 8 i64 values to join
 ///
 /// # Returns
 /// The reconstructed i128 value
 ///
 /// # Panics
 /// If the resulting value is negative (would overflow into the sign bit)
-fn join_i128(chunks: &[u32; 8]) -> i128 {
+fn join_i128(chunks: &[i64; 8]) -> i128 {
     let mut value = 0i128;
     for (i, &chunk) in chunks.iter().enumerate() {
         value += (chunk as i128) << (i * 16);
@@ -67,28 +68,55 @@ fn encrypt_chunk(
     pubkey.encrypt_with(amount, rand_value)
 }
 
-/// Decrypts a single ElGamal ciphertext chunk to recover a 32-bit value.
+/// Decrypts a single ElGamal ciphertext chunk to recover a 64-bit signed value.
 ///
 /// # Arguments
 /// * `secret_key` - The ElGamal secret key for decryption
 /// * `ciphertext` - The ciphertext to decrypt
 ///
 /// # Returns
-/// The decrypted u32 value
+/// The decrypted i64 value (may be negative)
 ///
 /// # Panics
 /// * If decryption fails (e.g., ciphertext is malformed)
-/// * If the decrypted value exceeds u32::MAX
+/// * If the decrypted value falls outside of [-u32::MAX, u32::MAX]
 fn decrypt_chunk(
     secret_key: &elgamal::ElGamalSecretKey,
     ciphertext: &elgamal::ElGamalCiphertext,
-) -> u32 {
-    match secret_key.decrypt_u32(ciphertext) {
-        Some(value) => {
-            assert!(value <= u32::MAX.into(), "Decrypted value exceeds u32 max");
-            value as u32
+) -> i64 {
+    // Decrypt both as a negative and positive value to provide some semblance
+    // of timing resistance. This also acts as a sanity check that decryption is
+    // working as expected (outside of the zero case at most one of these
+    // decryptions should succeed).
+    let ct_plus = ciphertext.add_amount(u32::MAX);
+    const U32_MAX: u64 = u32::MAX as u64;
+    match (secret_key.decrypt_u32(ciphertext), secret_key.decrypt_u32(&ct_plus)) {
+        (Some(0), Some(U32_MAX)) =>
+            // Zero case. This is the only case where both decryptions should
+            // succeed
+            0,
+        (Some(value), None) => {
+            // Value is positive.
+            assert!(value <= u32::MAX as u64, "Decrypted value exceeds u32 max");
+            value as i64
         }
-        None => panic!("Decryption failed"),
+        (None, Some(value)) => {
+            assert!(value <= u32::MAX as u64, "Decrypted value exceeds u32 max");
+            // Value is negative. Subtract u32::MAX to get the negative value.
+            // NOTE: This is a bit of a hack to work around the fact that
+            // solana-zk-sdk seems to ONLY expose a function for decoding u32
+            // values. Technically it's possible to decrypt to a `DiscreteLog`
+            // and the library claims that `DiscreteLog` has some function
+            // called `decode` , but there's only a `decode_u32` function that
+            // fails to decode values outside of the u32 range.
+            // TODO(Brett): This approach works, but is there a better way?
+            // There's definitely a performance hit to doing two decryptions for
+            // every chunk, and it's also not very clean. What do others do in
+            // this case?
+            (value as i64) - (u32::MAX as i64)
+        }
+        (Some(_), Some(_)) => panic!("Both decryptions should not succeed"),
+        (None, None) => panic!("Decryption failed"),
     }
 }
 
@@ -229,7 +257,7 @@ pub fn decrypt_i128(
     ciphertext_bytes: &EncryptedI128Bytes,
 ) -> i128 {
     let ciphertext = EncryptedI128::from_bytes(ciphertext_bytes);
-    let mut chunks = [0u32; 8];
+    let mut chunks = [0i64; 8];
     for (i, commitment) in ciphertext.commitments.iter().enumerate() {
         let ciphertext = elgamal::ElGamalCiphertext {
             commitment: commitment.clone(),
@@ -330,9 +358,9 @@ mod tests {
         let amount: u16 = u16::MAX; // Use a maximum value for testing
         let rand_value = PedersenOpening::new_rand();
         let ciphertext: ElGamalCiphertext = encrypt_chunk(&pubkey, amount, &rand_value);
-        let decrypted_amount: u32 = decrypt_chunk(&secret_key, &ciphertext);
+        let decrypted_amount = decrypt_chunk(&secret_key, &ciphertext);
 
-        assert_eq!(decrypted_amount, amount as u32);
+        assert_eq!(decrypted_amount, amount as i64);
     }
 
     // Test the serialization and deserialization of EncryptedI128.
@@ -374,9 +402,8 @@ mod tests {
     #[test]
     fn test_simple_chunk_join_i128() {
         let val = 123456789i128;
-        let chunked = chunk_i128(val);
-        let chunked_as_u32: [u32; 8] = chunked.map(|x| x as u32);
-        let joined = join_i128(&chunked_as_u32);
+        let chunked = chunk_i128(val).map(|x| x as i64);
+        let joined = join_i128(&chunked);
         assert_eq!(joined, val);
     }
 
@@ -385,7 +412,7 @@ mod tests {
     // may contain values larger than 16 bits due to carries from addition.
     #[test]
     fn test_join_i128_with_overlapping_chunks() {
-        let chunks: [u32; 8] = [
+        let chunks: [i64; 8] = [
             0x1FFFF, // Overlaps into next position (requires 17 bits)
             0x20000, // Overlaps into next position
             0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -404,7 +431,7 @@ mod tests {
     fn test_join_i128_negative_overflow() {
         // Test case: Values that would cause overflow into the sign bit
         // This should trigger the negative value assertion
-        let chunks: [u32; 8] = [0, 0, 0, 0, 0, 0, 0, 0x8000];
+        let chunks: [i64; 8] = [0, 0, 0, 0, 0, 0, 0, 0x8000];
         // This would set the most significant bit, making the i128 negative
         join_i128(&chunks);
     }
@@ -413,10 +440,38 @@ mod tests {
     #[test]
     fn test_join_i128_maximum_positive() {
         // Test the maximum positive i128 value
-        let chunks: [u32; 8] = [
+        let chunks: [i64; 8] = [
             0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x7FFF,
         ];
         let expected = i128::MAX;
         assert_eq!(join_i128(&chunks), expected);
+    }
+
+    // Test join_i128 where some chunks are negative but the resulting i128 is
+    // positive.  This simulates the result of homomorphic subtraction
+    // operations where individual chunks may go negative due to borrowing, but
+    // the overall result remains positive.
+    #[test]
+    fn test_join_i128_with_negative_chunks_positive_result() {
+        // Simple case with one negative chunk
+        let chunks: [i64; 8] = [-1, 1, 0, 0, 0, 0, 0, 0];
+        let expected = 0xFFFF;
+        assert_eq!(join_i128(&chunks), expected);
+
+        // Slightly more complex case with multiple negative chunks
+        let chunks2: [i64; 8] = [-1, 0, -1, 0, 1, 0, 0, 0];
+        let expected2 = (1 << 64) - (1 << 32) - 1;
+        assert_eq!(join_i128(&chunks2), expected2);
+
+        // Complex case with multiple negative and positive chunks
+        let chunks3: [i64; 8] = [
+            -5,      // -5
+            10,      // + 10 * 2^16 = 655360
+            -3,      // - 3 * 2^32 = -12884901888
+            4,       // + 4 * 2^48 = 1125899906842624
+            0, 0, 0, 0
+        ];
+        let expected3 = (4 << 48) - (3 << 32) + (10 << 16) - 5;
+        assert_eq!(join_i128(&chunks3), expected3);
     }
 }
