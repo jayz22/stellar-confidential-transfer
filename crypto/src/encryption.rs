@@ -90,11 +90,16 @@ fn decrypt_chunk(
     // decryptions should succeed).
     let ct_plus = ciphertext.add_amount(u32::MAX);
     const U32_MAX: u64 = u32::MAX as u64;
-    match (secret_key.decrypt_u32(ciphertext), secret_key.decrypt_u32(&ct_plus)) {
+    match (
+        secret_key.decrypt_u32(ciphertext),
+        secret_key.decrypt_u32(&ct_plus),
+    ) {
         (Some(0), Some(U32_MAX)) =>
-            // Zero case. This is the only case where both decryptions should
-            // succeed
-            0,
+        // Zero case. This is the only case where both decryptions should
+        // succeed
+        {
+            0
+        }
         (Some(value), None) => {
             // Value is positive.
             assert!(value <= u32::MAX as u64, "Decrypted value exceeds u32 max");
@@ -465,11 +470,11 @@ mod tests {
 
         // Complex case with multiple negative and positive chunks
         let chunks3: [i64; 8] = [
-            -5,      // -5
-            10,      // + 10 * 2^16 = 655360
-            -3,      // - 3 * 2^32 = -12884901888
-            4,       // + 4 * 2^48 = 1125899906842624
-            0, 0, 0, 0
+            -5, // -5
+            10, // + 10 * 2^16 = 655360
+            -3, // - 3 * 2^32 = -12884901888
+            4,  // + 4 * 2^48 = 1125899906842624
+            0, 0, 0, 0,
         ];
         let expected3 = (4 << 48) - (3 << 32) + (10 << 16) - 5;
         assert_eq!(join_i128(&chunks3), expected3);

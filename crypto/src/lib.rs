@@ -1,4 +1,5 @@
 pub mod encryption;
+pub mod proof;
 
 #[cfg(test)]
 mod tests {
@@ -58,7 +59,6 @@ mod tests {
         let decrypted_diff = decrypt_i128(&secret_key, &encrypted_diff);
         assert_eq!(decrypted_diff, lhs - rhs);
     }
-
 
     // Test homomorphic subtraction of two encrypted 128-bit integers.
     #[test]
