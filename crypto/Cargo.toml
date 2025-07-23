@@ -12,6 +12,7 @@ crate-type = ["lib"]
 doctest = false
 
 [dependencies]
+soroban-sdk = { workspace = true }
 solana-zk-sdk = {workspace = true}
 
 [dev-dependencies]

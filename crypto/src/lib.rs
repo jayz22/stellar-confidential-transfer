@@ -1,5 +1,6 @@
 pub mod encryption;
 pub mod proof;
+pub use proof::*;
 
 #[cfg(test)]
 mod tests {
