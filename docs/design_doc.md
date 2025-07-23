@@ -4,10 +4,10 @@
 
 - Implements SEP-41, can function as and interoperate with a standard token
 - Confidentiality as an optional extension  
-	- if enabled, has an additional "confidential account" extension with encrypted balance
-	- able to transfer from encrypted balance to standard (transparent) balance
+	- Token issuer opt-in. 
+    - Account opt-in. If enabled, the account has duo-balances (normal and encrypted) and can transfer between the two. 
 - Auditability
-	- any encrypted transfer should be auditable by additional 3rd parties
+	- transfer amounts should be auditable by additional 3rd parties, either designated at token level, and any additional
 	- proper events should be emitted
 - Usability
 	- avoid spamming to the confidential account
@@ -15,7 +15,9 @@
     - verification should be cheap and fast (~milliseconds)
     - proving should be reasonably fast (~seconds)
 
-## Secondary Goals - TODO: check with Nico's doc's requirements
+## Secondary Goals
+- Create a new standard (similar to SEP-41) for confidential token interface
+- Admin control. The issuer or admin has authority over account's confidential extention usage. 
 
 # Token Design
 
