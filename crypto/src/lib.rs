@@ -1,7 +1,7 @@
 pub mod arith;
 pub mod encryption;
 // TODO: Uncomment these vv
-pub mod proof;
+//pub mod proof;
 //pub use proof::*;
 
 #[cfg(test)]

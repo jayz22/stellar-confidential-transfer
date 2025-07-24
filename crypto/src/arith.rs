@@ -1,5 +1,6 @@
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek::traits::MultiscalarMul;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// scalar helpers
@@ -62,6 +63,15 @@ pub fn point_to_bytes(point: &RistrettoPoint) -> [u8; 32] {
 pub fn bytes_to_point(bytes: &[u8; 32]) -> RistrettoPoint {
     // TODO(Brett): Error handling for invalid bytes
     point_decompress(&CompressedRistretto::from_slice(bytes).expect("Invalid compressed point"))
+}
+
+pub fn multi_scalar_mul(points: &[RistrettoPoint], scalars: &[Scalar]) -> RistrettoPoint {
+    assert_eq!(
+        points.len(),
+        scalars.len(),
+        "Points and scalars must have the same length"
+    );
+    RistrettoPoint::multiscalar_mul(scalars, points)
 }
 
 #[cfg(test)]
@@ -310,5 +320,66 @@ mod tests {
         scalar_mul_assign(&mut a, &b);
         scalar_mul_assign(&mut a, &c);
         assert_eq!(a, Scalar::from(24u64));
+    }
+
+    #[test]
+    fn test_multi_scalar_mul() {
+        let base = constants::RISTRETTO_BASEPOINT_POINT;
+
+        // Test with single point and scalar
+        let points = vec![base];
+        let scalars = vec![Scalar::from(5u64)];
+        let result = multi_scalar_mul(&points, &scalars);
+        let expected = point_mul(&base, &Scalar::from(5u64));
+        assert_eq!(result, expected);
+
+        // Test with multiple points and scalars
+        let point1 = base;
+        let point2 = point_mul(&base, &Scalar::from(2u64));
+        let point3 = point_mul(&base, &Scalar::from(3u64));
+        let points = vec![point1, point2, point3];
+        let scalars = vec![Scalar::from(1u64), Scalar::from(2u64), Scalar::from(3u64)];
+        let result = multi_scalar_mul(&points, &scalars);
+        // Expected: 1*base + 2*(2*base) + 3*(3*base) = 1*base + 4*base + 9*base = 14*base
+        let expected = point_mul(&base, &Scalar::from(14u64));
+        assert_eq!(result, expected);
+
+        // Test with zero scalars
+        let points = vec![base, point2];
+        let scalars = vec![Scalar::from(0u64), Scalar::from(0u64)];
+        let result = multi_scalar_mul(&points, &scalars);
+        assert_eq!(result, RistrettoPoint::identity());
+
+        // Test with mixed zero and non-zero scalars
+        let points = vec![base, point2, point3];
+        let scalars = vec![Scalar::from(0u64), Scalar::from(5u64), Scalar::from(0u64)];
+        let result = multi_scalar_mul(&points, &scalars);
+        // Expected: 0*base + 5*(2*base) + 0*(3*base) = 10*base
+        let expected = point_mul(&base, &Scalar::from(10u64));
+        assert_eq!(result, expected);
+
+        // Test empty vectors
+        let points: Vec<RistrettoPoint> = vec![];
+        let scalars: Vec<Scalar> = vec![];
+        let result = multi_scalar_mul(&points, &scalars);
+        assert_eq!(result, RistrettoPoint::identity());
+
+        // Test with identity point
+        let identity = RistrettoPoint::identity();
+        let points = vec![identity, base];
+        let scalars = vec![Scalar::from(100u64), Scalar::from(7u64)];
+        let result = multi_scalar_mul(&points, &scalars);
+        // Expected: 100*identity + 7*base = 0 + 7*base = 7*base
+        let expected = point_mul(&base, &Scalar::from(7u64));
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Points and scalars must have the same length")]
+    fn test_multi_scalar_mul_length_mismatch() {
+        let base = constants::RISTRETTO_BASEPOINT_POINT;
+        let points = vec![base, base];
+        let scalars = vec![Scalar::from(1u64)];
+        multi_scalar_mul(&points, &scalars);
     }
 }
