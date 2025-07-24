@@ -1,3 +1,4 @@
+pub mod arith;
 pub mod encryption;
 pub mod proof;
 pub use proof::*;
