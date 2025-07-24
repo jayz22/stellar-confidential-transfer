@@ -1,14 +1,15 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token::TokenInterface, Address, Bytes, BytesN, Env,
-    String, Vec,
+    contract, contractimpl, contracttype, events, symbol_short, token::TokenInterface, Address, Bytes, BytesN, Env, String, Symbol, Vec
 };
 
 use crate::utils::*;
-use stellar_confidential_crypto::proof::{
+use stellar_confidential_crypto::{proof::{
     CompressedPubkey, ConfidentialAmount, ConfidentialBalance, NormalizationProof, TransferProof,
     WithdrawalProof,
-};
+}, ConfidentialAmount};
+
+const MAX_PENDING_BALANCE_COUNTER: u32 = 0x10000;
 
 #[contract]
 pub struct ConfidentialToken;
@@ -33,7 +34,7 @@ pub struct AccountConfidentialExt {
 #[contractimpl]
 impl ConfidentialToken {
     // Register this token for the confidential extention
-    pub fn register_confidential_token(e: &Env, auditor_keys: Vec<ElGamalPublicKey>) {
+    pub fn register_confidential_token(e: &Env, auditor_keys: Vec<CompressedPubkey>) {
         read_administrator(e).require_auth();
         init_token_confidential_ext(e, auditor_keys);
     }
@@ -57,16 +58,42 @@ impl ConfidentialToken {
         write_account_confidential_ext(e, acc, &ext);
     }
 
-    // Deposit a token amount into the confidential balance of an account. src and des can be the same account
-    //     - Loads the confidential extension from `src` and `des`, fail if either does not exist.
-    //     - If `des`'s `pending_balance_counter` is at max (`2^16`), fail.
-    //     - Subtracts `amt` from `src`'s regular (transparent) `balance`, fail if `balance` is less than `amt`.
-    //     - Loads the `pending_balance` from `des`.
-    //     - Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`.
-    //     - Increment `des`'s `pending_balance_counter`
-    //     - Emits an event TBD
+    // Deposit `amt` from `acc`'s transparent balance into its available pending balance (`amt` encrypted with zero randomness)
     pub fn deposit(e: &Env, acc: Address, amt: u64) {
-        todo!()
+        // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
+        let mut token_ext = read_token_confidential_ext(e);
+        if !token_ext.enabled_flag {
+            panic!("token confidential functionality is not enabled");
+        }
+
+        // load the `acc`'s confidential extention, fail if doesn't exist or not enabled
+        let mut acc_ext = read_account_confidential_ext(e, acc.clone());
+        if !acc_ext.enabled_flag {
+            panic!("account confidential functionality is not enabled");
+        }
+
+        // check if `acc`'s `pending_balance_counter` has reached MAX_PENDING_BALANCE_COUNTER, if so fail.
+        if acc_ext.pending_counter >= MAX_PENDING_BALANCE_COUNTER {
+            panic!("pending balance counter has reached maximum value");
+        }
+
+        // Subtracts `amt` from `acc`'s regular (transparent) `balance`, fail if `balance` is less than `amt`.
+        spend_balance(e, acc.clone(), amt as i128);
+
+        // TODO: Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`.
+        acc_ext.pending_balance = ConfidentialAmount::new_amount_with_no_randomness(amt);
+        
+        // Increment `acc`'s `pending_balance_counter`
+        acc_ext.pending_counter += 1;
+        write_account_confidential_ext(e, acc.clone(), &acc_ext);
+
+        // Update token's total confidential supply
+        token_ext.total_confidential_supply.checked_add(amt as u128).unwrap();
+        write_token_confidential_ext(e, &token_ext);
+
+        //  Emits an event {"deposit", acc, amt}
+        let topics = (Symbol::new(e, "CT-deposit"), acc);
+        e.events().publish(topics, amt);
     }
 
     // Withdraw an amount from srcount's confidential balance to its transparent balance
@@ -103,7 +130,7 @@ impl ConfidentialToken {
         des: Address,
         amt_src: ConfidentialAmount,
         amt_des: ConfidentialAmount,
-        auditor_keys: Vec<ElGamalPublicKey>,
+        auditor_keys: Vec<CompressedPubkey>,
         amt_auditors: Vec<ConfidentialAmount>,
         src_new_balance: ConfidentialBalance,
         proof: TransferProof,

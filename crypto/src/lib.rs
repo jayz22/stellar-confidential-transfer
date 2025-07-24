@@ -1,6 +1,8 @@
 pub mod encryption;
 pub mod proof;
 pub use proof::*;
+pub mod confidential_balance;
+pub use confidential_balance::*;
 
 #[cfg(test)]
 mod tests {

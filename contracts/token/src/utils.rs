@@ -1,7 +1,7 @@
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{contracttype, Address, Env, BytesN};
 
 use crate::contract::{AccountConfidentialExt, TokenConfidentialExt};
-use stellar_confidential_crypto::proof::{ConfidentialAmount, ConfidentialBalance};
+use stellar_confidential_crypto::proof::{ConfidentialAmount, ConfidentialBalance, CompressedPubkey, EncryptedChunk, CompressedRistretto};
 
 pub(crate) const DAY_IN_LEDGERS: u32 = 17280;
 pub(crate) const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;

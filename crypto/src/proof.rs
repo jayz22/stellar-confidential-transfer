@@ -1,4 +1,5 @@
 use soroban_sdk::{Bytes, BytesN};
+use crate::confidential_balance::*;
 
 const FIAT_SHAMIR_WITHDRAWAL_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/WithdrawalProofFiatShamir";
@@ -11,9 +12,6 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof
 const BULLETPROOFS_NUM_BITS: u64 = 16;
 
 #[derive(Debug, Clone)]
-pub struct CompressedRistretto(BytesN<32>);
-
-#[derive(Debug, Clone)]
 pub struct Scalar(BytesN<32>);
 
 #[derive(Debug, Clone)]
@@ -21,31 +19,6 @@ pub struct RangeProof(Bytes);
 
 #[derive(Debug, Clone)]
 pub struct CompressedPubkey(BytesN<32>);
-
-#[derive(Debug, Clone)]
-pub struct EncryptedChunk
-{
-    pub amount: CompressedRistretto, // C
-    pub handle: CompressedRistretto, // D
-}
-
-#[derive(Debug, Clone)]
-pub struct ConfidentialAmount(Vec<EncryptedChunk>); // 4 chunks
-#[derive(Debug, Clone)]
-pub struct ConfidentialBalance(Vec<EncryptedChunk>); // 8 chunks
-
-impl ConfidentialAmount {
-    pub fn zero() -> Self {
-        todo!()
-    } 
-}
-
-impl ConfidentialBalance {
-    pub fn zero() -> Self {
-        todo!()
-    } 
-}
-
 
 /// Represents the proof structure for validating a normalization operation.
 #[derive(Debug, Clone)]
