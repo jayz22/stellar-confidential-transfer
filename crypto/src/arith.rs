@@ -6,6 +6,14 @@ use curve25519_dalek::traits::MultiscalarMul;
 /// scalar helpers
 ////////////////////////////////////////////////////////////////////////////////
 
+pub fn new_scalar_from_u64(value: u64) -> Scalar {
+    Scalar::from(value)
+}
+
+pub fn new_scalar_from_u128(value: u128) -> Scalar {
+    Scalar::from(value)
+}
+
 pub fn scalar_add(a: &Scalar, b: &Scalar) -> Scalar {
     a + b
 }
@@ -63,6 +71,10 @@ pub fn point_to_bytes(point: &RistrettoPoint) -> [u8; 32] {
 pub fn bytes_to_point(bytes: &[u8; 32]) -> RistrettoPoint {
     // TODO(Brett): Error handling for invalid bytes
     point_decompress(&CompressedRistretto::from_slice(bytes).expect("Invalid compressed point"))
+}
+
+pub fn point_equals(a: &RistrettoPoint, b: &RistrettoPoint) -> bool {
+    a == b
 }
 
 pub fn multi_scalar_mul(points: &[RistrettoPoint], scalars: &[Scalar]) -> RistrettoPoint {
