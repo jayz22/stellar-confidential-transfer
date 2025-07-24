@@ -12,6 +12,7 @@ crate-type = ["lib"]
 doctest = false
 
 [dependencies]
+curve25519-dalek = { workspace = true }
 soroban-sdk = { workspace = true }
 solana-zk-sdk = {workspace = true}
 
