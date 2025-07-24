@@ -9,12 +9,24 @@ pub fn scalar_add(a: &Scalar, b: &Scalar) -> Scalar {
     a + b
 }
 
+pub fn scalar_add_assign(a: &mut Scalar, b: &Scalar) {
+    *a += b;
+}
+
 pub fn scalar_sub(a: &Scalar, b: &Scalar) -> Scalar {
     a - b
 }
 
+pub fn scalar_sub_assign(a: &mut Scalar, b: &Scalar) {
+    *a -= b;
+}
+
 pub fn scalar_mul(a: &Scalar, b: &Scalar) -> Scalar {
     a * b
+}
+
+pub fn scalar_mul_assign(a: &mut Scalar, b: &Scalar) {
+    *a *= b;
 }
 
 pub fn scalar_to_bytes(scalar: &Scalar) -> [u8; 32] {
@@ -29,15 +41,17 @@ pub fn bytes_to_scalar(bytes: &[u8; 32]) -> Scalar {
 /// point helpers
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO: https://doc.dalek.rs/curve25519_dalek/traits/trait.MultiscalarMul.html
+
 pub fn point_mul(point: &RistrettoPoint, scalar: &Scalar) -> RistrettoPoint {
     point * scalar
 }
 
-pub fn compress_point(point: &RistrettoPoint) -> CompressedRistretto {
+pub fn point_compress(point: &RistrettoPoint) -> CompressedRistretto {
     point.compress()
 }
 
-pub fn decompress_point(compressed: &CompressedRistretto) -> RistrettoPoint {
+pub fn point_decompress(compressed: &CompressedRistretto) -> RistrettoPoint {
     compressed.decompress().expect("Invalid compressed point")
 }
 
@@ -47,7 +61,7 @@ pub fn point_to_bytes(point: &RistrettoPoint) -> [u8; 32] {
 
 pub fn bytes_to_point(bytes: &[u8; 32]) -> RistrettoPoint {
     // TODO(Brett): Error handling for invalid bytes
-    decompress_point(&CompressedRistretto::from_slice(bytes).expect("Invalid compressed point"))
+    point_decompress(&CompressedRistretto::from_slice(bytes).expect("Invalid compressed point"))
 }
 
 #[cfg(test)]
@@ -153,14 +167,14 @@ mod tests {
     #[test]
     fn test_compress_and_decompress_point() {
         let point = constants::RISTRETTO_BASEPOINT_POINT;
-        let compressed = compress_point(&point);
-        let decompressed = decompress_point(&compressed);
+        let compressed = point_compress(&point);
+        let decompressed = point_decompress(&compressed);
         assert_eq!(point, decompressed);
 
         // Test with identity point
         let identity = RistrettoPoint::identity();
-        let compressed_id = compress_point(&identity);
-        let decompressed_id = decompress_point(&compressed_id);
+        let compressed_id = point_compress(&identity);
+        let decompressed_id = point_decompress(&compressed_id);
         assert_eq!(identity, decompressed_id);
     }
 
@@ -183,7 +197,7 @@ mod tests {
     fn test_point_operations_consistency() {
         // Test that compress_point and point_to_bytes produce the same result
         let point = constants::RISTRETTO_BASEPOINT_POINT;
-        let compressed = compress_point(&point);
+        let compressed = point_compress(&point);
         let bytes_from_compress = compressed.to_bytes();
         let bytes_from_point = point_to_bytes(&point);
         assert_eq!(bytes_from_compress, bytes_from_point);
@@ -209,5 +223,92 @@ mod tests {
         let left = scalar_mul(&a, &scalar_add(&b, &c));
         let right = scalar_add(&scalar_mul(&a, &b), &scalar_mul(&a, &c));
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn test_scalar_add_assign() {
+        let mut a = Scalar::from(5u64);
+        let b = Scalar::from(7u64);
+        let expected = scalar_add(&a, &b);
+
+        scalar_add_assign(&mut a, &b);
+        assert_eq!(a, expected);
+        assert_eq!(a, Scalar::from(12u64));
+
+        // Test with zero
+        let mut a = Scalar::from(10u64);
+        let zero = Scalar::from(0u64);
+        scalar_add_assign(&mut a, &zero);
+        assert_eq!(a, Scalar::from(10u64));
+
+        // Test multiple additions
+        let mut a = Scalar::from(1u64);
+        let b = Scalar::from(2u64);
+        let c = Scalar::from(3u64);
+        scalar_add_assign(&mut a, &b);
+        scalar_add_assign(&mut a, &c);
+        assert_eq!(a, Scalar::from(6u64));
+    }
+
+    #[test]
+    fn test_scalar_sub_assign() {
+        let mut a = Scalar::from(10u64);
+        let b = Scalar::from(3u64);
+        let expected = scalar_sub(&a, &b);
+
+        scalar_sub_assign(&mut a, &b);
+        assert_eq!(a, expected);
+        assert_eq!(a, Scalar::from(7u64));
+
+        // Test subtraction with zero
+        let mut a = Scalar::from(15u64);
+        let zero = Scalar::from(0u64);
+        scalar_sub_assign(&mut a, &zero);
+        assert_eq!(a, Scalar::from(15u64));
+
+        // Test subtraction with itself
+        let mut a = Scalar::from(20u64);
+        let b = a.clone();
+        scalar_sub_assign(&mut a, &b);
+        assert_eq!(a, Scalar::from(0u64));
+
+        // Test multiple subtractions
+        let mut a = Scalar::from(20u64);
+        let b = Scalar::from(5u64);
+        let c = Scalar::from(3u64);
+        scalar_sub_assign(&mut a, &b);
+        scalar_sub_assign(&mut a, &c);
+        assert_eq!(a, Scalar::from(12u64));
+    }
+
+    #[test]
+    fn test_scalar_mul_assign() {
+        let mut a = Scalar::from(6u64);
+        let b = Scalar::from(7u64);
+        let expected = scalar_mul(&a, &b);
+
+        scalar_mul_assign(&mut a, &b);
+        assert_eq!(a, expected);
+        assert_eq!(a, Scalar::from(42u64));
+
+        // Test multiplication by one
+        let mut a = Scalar::from(25u64);
+        let one = Scalar::from(1u64);
+        scalar_mul_assign(&mut a, &one);
+        assert_eq!(a, Scalar::from(25u64));
+
+        // Test multiplication by zero
+        let mut a = Scalar::from(100u64);
+        let zero = Scalar::from(0u64);
+        scalar_mul_assign(&mut a, &zero);
+        assert_eq!(a, Scalar::from(0u64));
+
+        // Test multiple multiplications
+        let mut a = Scalar::from(2u64);
+        let b = Scalar::from(3u64);
+        let c = Scalar::from(4u64);
+        scalar_mul_assign(&mut a, &b);
+        scalar_mul_assign(&mut a, &c);
+        assert_eq!(a, Scalar::from(24u64));
     }
 }

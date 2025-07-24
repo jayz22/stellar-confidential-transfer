@@ -1,3 +1,4 @@
+use crate::arith::*;
 use soroban_sdk::{Bytes, BytesN};
 
 const FIAT_SHAMIR_WITHDRAWAL_SIGMA_DST: &[u8] =
@@ -23,8 +24,7 @@ pub struct RangeProof(Bytes);
 pub struct CompressedPubkey(BytesN<32>);
 
 #[derive(Debug, Clone)]
-pub struct EncryptedChunk
-{
+pub struct EncryptedChunk {
     pub amount: CompressedRistretto, // C
     pub handle: CompressedRistretto, // D
 }
@@ -37,15 +37,14 @@ pub struct ConfidentialBalance(Vec<EncryptedChunk>); // 8 chunks
 impl ConfidentialAmount {
     pub fn zero() -> Self {
         todo!()
-    } 
+    }
 }
 
 impl ConfidentialBalance {
     pub fn zero() -> Self {
         todo!()
-    } 
+    }
 }
-
 
 /// Represents the proof structure for validating a normalization operation.
 #[derive(Debug, Clone)]
@@ -371,6 +370,7 @@ fn verify_normalization_sigma_proof(
     points_rhs.extend(balance_to_points_c(current_balance));
     points_rhs.extend(balance_to_points_c(new_balance));
 
+    // TODO: Left off here
     let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
     let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
 
