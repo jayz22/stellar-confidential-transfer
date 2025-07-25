@@ -1,9 +1,8 @@
 use soroban_sdk::BytesN;
 
-
-const AMOUNT_CHUNKS: u64 = 4;
-const BALANCE_CHUNKS: u64 = 8;
-const CHUNK_SIZE_BITS: u64 = 16;
+pub const AMOUNT_CHUNKS: u64 = 4;
+pub const BALANCE_CHUNKS: u64 = 8;
+pub const CHUNK_SIZE_BITS: u64 = 16;
 
 #[derive(Debug, Clone)]
 pub struct CompressedRistretto(BytesN<32>);
@@ -32,4 +31,10 @@ impl ConfidentialBalance {
     } 
 }
 
-
+/// Splits a 64-bit integer amount into four 16-bit chunks, represented as `Scalar` values.
+pub fn split_into_chunks_u64(amount: u64) -> Vec<Scalar> {
+    (0..AMOUNT_CHUNKS).map(|i| {
+        let chunk = (amount >> (i * CHUNK_SIZE_BITS)) & 0xffff;
+        new_scalar_from_u64(chunk)
+    }).collect()
+}

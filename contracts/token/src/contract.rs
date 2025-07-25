@@ -6,7 +6,7 @@ use soroban_sdk::{
 use crate::utils::*;
 use stellar_confidential_crypto::{proof::{
     CompressedPubkey, ConfidentialAmount, ConfidentialBalance, NormalizationProof, TransferProof,
-    WithdrawalProof,
+    WithdrawalProof, verify_withdrawal_proof
 }, ConfidentialAmount};
 
 const MAX_PENDING_BALANCE_COUNTER: u32 = 0x10000;
@@ -58,7 +58,7 @@ impl ConfidentialToken {
         write_account_confidential_ext(e, acc, &ext);
     }
 
-    // Deposit `amt` from `acc`'s transparent balance into its available pending balance (`amt` encrypted with zero randomness)
+    // Deposit `amt` from `acc`'s transparent balance into its confidential pending balance (`amt` encrypted with zero randomness)
     pub fn deposit(e: &Env, acc: Address, amt: u64) {
         // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
         let mut token_ext = read_token_confidential_ext(e);
@@ -91,19 +91,12 @@ impl ConfidentialToken {
         token_ext.total_confidential_supply.checked_add(amt as u128).unwrap();
         write_token_confidential_ext(e, &token_ext);
 
-        //  Emits an event {"deposit", acc, amt}
-        let topics = (Symbol::new(e, "CT-deposit"), acc);
+        //  Emits an event
+        let topics = (Symbol::new(e, "ConfidentialToken::deposit"), acc);
         e.events().publish(topics, amt);
     }
 
-    // Withdraw an amount from srcount's confidential balance to its transparent balance
-    //     - Loads `src`'s confidential extension, fail if not exist.
-    //     - Verifies the WithdrawalProof.
-    //         - ...
-    //     - Encrypt the `amt` with zero randomness (`r=0`) to get `encrypted_amt`.
-    //     - Adds `amt` to `src`'s (transparent) balance.
-    //     - Sets `src`'s `available_balance` to `src_new_balance`.
-    //     - Emits an event TBD
+    // Withdraw an amount from acc's confidential available balance to its transparent balance
     pub fn withdraw(
         e: &Env,
         acc: Address,
@@ -111,7 +104,35 @@ impl ConfidentialToken {
         new_balance: ConfidentialBalance,
         proof: WithdrawalProof,
     ) {
-        todo!()
+        // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
+        let mut token_ext = read_token_confidential_ext(e);
+        if !token_ext.enabled_flag {
+            panic!("token confidential functionality is not enabled");
+        }
+
+        // load the `acc`'s confidential extention, fail if doesn't exist or not enabled
+        let mut acc_ext = read_account_confidential_ext(e, acc.clone());
+        if !acc_ext.enabled_flag {
+            panic!("account confidential functionality is not enabled");
+        }
+
+        // Verifies the WithdrawalProof against current balance, new balance, and amount
+        verify_withdrawal_proof(&acc_ext.encryption_key, amt, &acc_ext.available_balance, &new_balance, &proof)
+            .map_err(|_| panic!("withdrawal proof verification failed"));
+
+        // Sets `acc`'s `available_balance` to `new_balance`
+        acc_ext.available_balance = new_balance;
+        write_account_confidential_ext(e, acc.clone(), &acc_ext);
+
+        // Update token's total confidential supply (decrease)
+        token_ext.total_confidential_supply = token_ext.total_confidential_supply
+            .checked_sub(amt as u128)
+            .unwrap_or_else(|| panic!("insufficient total confidential supply"));
+        write_token_confidential_ext(e, &token_ext);
+
+        // Emits an event
+        let topics = (Symbol::new(e, "ConfidentialToken::withdraw"), acc);
+        e.events().publish(topics, amt);
     }
 
     // Transfers an amount confidentially between two accounts.

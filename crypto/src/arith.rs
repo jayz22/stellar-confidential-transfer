@@ -2,6 +2,8 @@ use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 
+use crate::{AMOUNT_CHUNKS, CHUNK_SIZE_BITS};
+
 ////////////////////////////////////////////////////////////////////////////////
 /// scalar helpers
 ////////////////////////////////////////////////////////////////////////////////
