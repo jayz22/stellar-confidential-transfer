@@ -1,3 +1,4 @@
+use curve25519_dalek::constants;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
@@ -62,6 +63,23 @@ pub fn bytes_to_scalar(bytes: &[u8; 32]) -> Scalar {
 /// point helpers
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Get the base point of the Ristretto group.
+pub fn basepoint() -> RistrettoPoint {
+    constants::RISTRETTO_BASEPOINT_POINT
+}
+
+/// Returns the hash-to-point result of serializing the basepoint of the
+/// Ristretto255 group.
+pub fn hash_to_point_base() -> RistrettoPoint {
+    // The point derived from the SHA3-512 hash of the basepoint.
+    const HASH_BASE_POINT: [u8; 32] = [
+        0x8c, 0x92, 0x40, 0xb4, 0x56, 0xa9, 0xe6, 0xdc, 0x65, 0xc3, 0x77, 0xa1, 0x04, 0x8d, 0x74,
+        0x5f, 0x94, 0xa0, 0x8c, 0xdb, 0x7f, 0x44, 0xcb, 0xcd, 0x7b, 0x46, 0xf3, 0x40, 0x48, 0x87,
+        0x11, 0x34,
+    ];
+    bytes_to_point(&HASH_BASE_POINT)
+}
+
 /// Multiply a point by a scalar.
 pub fn point_mul(point: &RistrettoPoint, scalar: &Scalar) -> RistrettoPoint {
     point * scalar
@@ -106,8 +124,24 @@ pub fn multi_scalar_mul(points: &[RistrettoPoint], scalars: &[Scalar]) -> Ristre
 #[cfg(test)]
 mod tests {
     use super::*;
-    use curve25519_dalek::constants;
     use curve25519_dalek::traits::Identity;
+
+    // Check that our hash_to_point_base function produces the expected point.
+    #[test]
+    fn test_hash_to_point_base() {
+        use sha3::Sha3_512;
+
+        // Compute expected point by hashing basepoint as SHA3-512 and
+        // constructing a point from it.
+        let basepoint_bytes = basepoint().compress().to_bytes();
+        let expected = RistrettoPoint::hash_from_bytes::<Sha3_512>(&basepoint_bytes);
+
+        assert_eq!(
+            hash_to_point_base(),
+            expected,
+            "Got different point than expected"
+        );
+    }
 
     #[test]
     fn test_scalar_add() {
