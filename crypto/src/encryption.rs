@@ -317,12 +317,8 @@ pub fn add_encrypted_i128(
 /// # Returns
 /// The encrypted difference as `EncryptedI128Bytes`
 ///
-/// # Known Issues
-/// * WARNING: This implementation is currently broken for cases where
-///   the lower chunk needs to borrow from a higher chunk. This can lead
-///   to panics during decryption if a chunk goes negative.
 // TODO(Brett): Deduplicate with `add_encrypted_i128`. Perhaps use a generic
-// binop function? Do this only after fixing issue with subtraction borrowing.
+// binop function?
 pub fn sub_encrypted_i128(
     lhs_bytes: &EncryptedI128Bytes,
     rhs_bytes: &EncryptedI128Bytes,
@@ -334,10 +330,6 @@ pub fn sub_encrypted_i128(
     // Subtract commitments pairwise
     let mut new_commitments = [pedersen::PedersenCommitment::default(); 8];
     for i in 0..8 {
-        // TODO(Brett): This is subtly broken right now as it does not handle
-        // borrowing from higher chunks to prevent lower chunks from going
-        // negative. See the comment in `test_sub_encrypted_i128` for more
-        // details. Remove 'Known issues' doc comment when fixed.
         new_commitments[i] = lhs.commitments[i] - rhs.commitments[i];
     }
     EncryptedI128 {
