@@ -68,7 +68,12 @@ impl ConfidentialAmount {
 
 impl ConfidentialBalance {
     pub fn new_balance_with_no_randomness(balance: u128) -> Self {
-        todo!()
+        let chunks = split_into_chunks_u128(balance);
+        let encrypted_chunks = chunks
+            .into_iter()
+            .map(|chunk| EncryptedChunk::new_chunk_no_randomness(&chunk))
+            .collect();
+        ConfidentialBalance(encrypted_chunks)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -82,6 +87,16 @@ pub fn split_into_chunks_u64(amount: u64) -> Vec<Scalar> {
         .map(|i| {
             let chunk = (amount >> (i * CHUNK_SIZE_BITS)) & 0xffff;
             new_scalar_from_u64(chunk)
+        })
+        .collect()
+}
+
+/// Splits a 128-bit integer balance into eight 16-bit chunks, represented as `Scalar` values.
+pub fn split_into_chunks_u128(balance: u128) -> Vec<Scalar> {
+    (0..BALANCE_CHUNKS)
+        .map(|i| {
+            let chunk = (balance >> (i * CHUNK_SIZE_BITS)) & 0xffff;
+            new_scalar_from_u64(chunk as u64)
         })
         .collect()
 }
