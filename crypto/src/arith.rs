@@ -109,8 +109,9 @@ pub fn point_to_bytes(point: &RistrettoPoint) -> [u8; 32] {
 }
 
 /// Convert bytes to a point.
-pub fn bytes_to_point(bytes: &[u8; 32]) -> RistrettoPoint {
+pub fn bytes_to_point(bytes: &[u8]) -> RistrettoPoint {
     // TODO(Brett): Error handling for invalid bytes
+    assert!(bytes.len() == 32, "Bytes must be 32 bytes long");
     point_decompress(&CompressedRistretto::from_slice(bytes).expect("Invalid compressed point"))
 }
 

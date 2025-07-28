@@ -22,19 +22,34 @@ impl CompressedRistrettoBytes {
 // TODO: Add `EncryptedChunkBytes`?
 #[derive(Debug, Clone)]
 pub struct EncryptedChunk {
-    pub amount: RistrettoPoint, // C
-    pub handle: RistrettoPoint, // D
+    amount: RistrettoPoint, // C
+    handle: RistrettoPoint, // D
 }
 
 impl EncryptedChunk {
-    pub fn new_chunk_no_randomness(val: &Scalar) -> EncryptedChunk {
+    pub fn new_chunk_no_randomness(val: &Scalar) -> Self {
         EncryptedChunk {
             amount: arith::basepoint_mul(val),
             handle: RistrettoPoint::identity(),
         }
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(arith::point_to_bytes(&self.amount));
+        bytes.extend(arith::point_to_bytes(&self.handle));
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &Vec<u8>) -> Self {
+        assert!(bytes.len() == 64, "EncryptedChunk must be 64 bytes");
+        let amount = arith::bytes_to_point(&bytes[0..32]);
+        let handle = arith::bytes_to_point(&bytes[32..64]);
+        EncryptedChunk { amount, handle }
+    }
 }
 
+// TODO: Bytes versions of these
 #[derive(Debug, Clone)]
 pub struct ConfidentialAmount(pub Vec<EncryptedChunk>); // 4 chunks
 #[derive(Debug, Clone)]
@@ -42,7 +57,12 @@ pub struct ConfidentialBalance(pub Vec<EncryptedChunk>); // 8 chunks
 
 impl ConfidentialAmount {
     pub fn new_amount_with_no_randomness(amount: u64) -> Self {
-        todo!()
+        let chunks = split_into_chunks_u64(amount);
+        let encrypted_chunks = chunks
+            .into_iter()
+            .map(|chunk| EncryptedChunk::new_chunk_no_randomness(&chunk))
+            .collect();
+        ConfidentialAmount(encrypted_chunks)
     }
 }
 
@@ -51,15 +71,9 @@ impl ConfidentialBalance {
         todo!()
     }
 
-    // TODO: Fixup
-    // pub fn to_bytes(&self) -> Vec<u8> {
-    //     let mut bytes = Vec::new();
-    //     for chunk in &self.0 {
-    //         bytes.extend(chunk.amount.0.to_array());
-    //         bytes.extend(chunk.handle.0.to_array());
-    //     }
-    //     bytes
-    // }
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.iter().map(EncryptedChunk::to_bytes).flatten().collect()
+    }
 }
 
 /// Splits a 64-bit integer amount into four 16-bit chunks, represented as `Scalar` values.
