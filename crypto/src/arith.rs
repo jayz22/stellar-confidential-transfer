@@ -2,8 +2,9 @@ use curve25519_dalek::constants;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
+use sha2::Sha512;
 
-use crate::{AMOUNT_CHUNKS, CHUNK_SIZE_BITS};
+use crate::{ScalarBytes, AMOUNT_CHUNKS, CHUNK_SIZE_BITS};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// scalar helpers
@@ -119,6 +120,10 @@ pub fn multi_scalar_mul(points: &[RistrettoPoint], scalars: &[Scalar]) -> Ristre
         "Points and scalars must have the same length"
     );
     RistrettoPoint::multiscalar_mul(scalars, points)
+}
+
+pub fn new_scalar_from_sha2_512(bytes: &Vec<u8>) -> Scalar {
+    Scalar::hash_from_bytes::<Sha512>(bytes)
 }
 
 #[cfg(test)]

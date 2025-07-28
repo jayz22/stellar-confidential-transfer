@@ -1,5 +1,5 @@
-use soroban_sdk::{Bytes, BytesN};
-use crate::confidential_balance::*;
+use soroban_sdk::{Bytes, BytesN, Env};
+use crate::{arith::{basepoint, hash_to_point_base, new_scalar_from_sha2_512}, confidential_balance::*};
 
 const FIAT_SHAMIR_WITHDRAWAL_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/WithdrawalProofFiatShamir";
@@ -12,7 +12,7 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof
 const BULLETPROOFS_NUM_BITS: u64 = 16;
 
 #[derive(Debug, Clone)]
-pub struct Scalar(BytesN<32>);
+pub struct ScalarBytes(BytesN<32>);
 
 #[derive(Debug, Clone)]
 pub struct RangeProof(Bytes);
@@ -74,10 +74,10 @@ pub struct NormalizationSigmaProofXs {
 
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofAlphas {
-    pub a1s: Vec<Scalar>, // hides the unencrypted amount chunks
-    pub a2: Scalar,       // hides dk
-    pub a3: Scalar,       // hides dk^-1
-    pub a4s: Vec<Scalar>, // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
+    pub a1s: Vec<ScalarBytes>, // hides the unencrypted amount chunks
+    pub a2: ScalarBytes,       // hides dk
+    pub a3: ScalarBytes,       // hides dk^-1
+    pub a4s: Vec<ScalarBytes>, // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
 }
 
 #[derive(Debug, Clone)]
@@ -100,13 +100,13 @@ pub struct WithdrawalSigmaProofXs {
 #[derive(Debug, Clone)]
 pub struct WithdrawalSigmaProofAlphas {
     // unencrypted amount chunks
-    pub a1s: Vec<Scalar>,
+    pub a1s: Vec<ScalarBytes>,
     // dk
-    pub a2: Scalar,
+    pub a2: ScalarBytes,
     // dk^-1
-    pub a3: Scalar,
+    pub a3: ScalarBytes,
     // encryption randomness
-    pub a4s: Vec<Scalar>,
+    pub a4s: Vec<ScalarBytes>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,12 +145,12 @@ pub struct TransferSigmaProofXs {
 
 #[derive(Debug, Clone)]
 pub struct TransferSigmaProofAlphas {
-    pub a1s: Vec<Scalar>, // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
-    pub a2: Scalar,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
-    pub a3s: Vec<Scalar>, // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
-    pub a4s: Vec<Scalar>, // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
-    pub a5: Scalar,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
-    pub a6s: Vec<Scalar>, // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
+    pub a1s: Vec<ScalarBytes>, // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
+    pub a2: ScalarBytes,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
+    pub a3s: Vec<ScalarBytes>, // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
+    pub a4s: Vec<ScalarBytes>, // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
+    pub a5: ScalarBytes,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
+    pub a6s: Vec<ScalarBytes>, // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
 }
 
 #[derive(Debug, Clone)]
@@ -1096,66 +1096,66 @@ fn deserialize_transfer_sigma_proof(proof_bytes: Vec<u8>) -> Option<TransferSigm
 
 /// Derives the Fiat-Shamir challenge for the `NormalizationSigmaProof`.
 fn fiat_shamir_normalization_sigma_proof_challenge(
+    e: &Env,
     ek: &CompressedPubkey,
     current_balance: &ConfidentialBalance,
     new_balance: &ConfidentialBalance,
     proof_xs: &NormalizationSigmaProofXs,
-) -> Scalar {
+) -> ScalarBytes {
     // rho = H(DST, G, H, P, (C_cur, D_cur)_{1..8}, (C_new, D_new)_{1..8}, X_{1..18})
     let mut bytes = FIAT_SHAMIR_NORMALIZATION_SIGMA_DST.to_vec();
+    bytes.extend(basepoint().compress().to_bytes());
+    bytes.extend(hash_to_point_base().compress().to_bytes());
+    bytes.extend(ek.0.to_array());
 
-    bytes.extend(compressed_point_to_bytes(&basepoint_compressed()));
-    bytes.extend(compressed_point_to_bytes(&point_compress(
-        &hash_to_point_base(),
-    )));
-    bytes.extend(pubkey_to_bytes(ek));
-    bytes.extend(balance_to_bytes(current_balance));
-    bytes.extend(balance_to_bytes(new_balance));
-    bytes.extend(point_to_bytes(&proof_xs.x1));
-    bytes.extend(point_to_bytes(&proof_xs.x2));
+    bytes.extend(current_balance.to_bytes());
+    bytes.extend(new_balance.to_bytes());
+    bytes.extend(&proof_xs.x1.to_bytes());
+    bytes.extend(&proof_xs.x2.to_bytes());
     for x in &proof_xs.x3s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
     for x in &proof_xs.x4s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
-
-    new_scalar_from_sha2_512(&bytes)
+    let bn = BytesN::<32>::from_array(e, new_scalar_from_sha2_512(&bytes).as_bytes());
+    ScalarBytes(bn)
 }
 
 /// Derives the Fiat-Shamir challenge for the `WithdrawalSigmaProof`.
 fn fiat_shamir_withdrawal_sigma_proof_challenge(
+    e: &Env,
     ek: &CompressedPubkey,
-    amount_chunks: &[Scalar],
+    amount_chunks: &[ScalarBytes],
     current_balance: &ConfidentialBalance,
     proof_xs: &WithdrawalSigmaProofXs,
-) -> Scalar {
+) -> ScalarBytes {
     // rho = H(DST, G, H, P, v_{1..4}, (C_cur, D_cur)_{1..8}, X_{1..18})
     let mut bytes = FIAT_SHAMIR_WITHDRAWAL_SIGMA_DST.to_vec();
 
-    bytes.extend(compressed_point_to_bytes(&basepoint_compressed()));
-    bytes.extend(compressed_point_to_bytes(&point_compress(
-        &hash_to_point_base(),
-    )));
-    bytes.extend(pubkey_to_bytes(ek));
+    bytes.extend(basepoint().compress().to_bytes());
+    bytes.extend(hash_to_point_base().compress().to_bytes());
+    bytes.extend(ek.0.to_array());
     for chunk in amount_chunks {
-        bytes.extend(scalar_to_bytes(chunk));
+        bytes.extend(chunk.0.to_array());
     }
-    bytes.extend(balance_to_bytes(current_balance));
-    bytes.extend(point_to_bytes(&proof_xs.x1));
-    bytes.extend(point_to_bytes(&proof_xs.x2));
+    bytes.extend(current_balance.to_bytes());
+    bytes.extend(&proof_xs.x1.to_bytes());
+    bytes.extend(&proof_xs.x2.to_bytes());
     for x in &proof_xs.x3s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
     for x in &proof_xs.x4s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
 
-    new_scalar_from_sha2_512(&bytes)
+    let bn = BytesN::<32>::from_array(e, new_scalar_from_sha2_512(&bytes).as_bytes());
+    ScalarBytes(bn)
 }
 
 /// Derives the Fiat-Shamir challenge for the `TransferSigmaProof`.
 fn fiat_shamir_transfer_sigma_proof_challenge(
+    e: &Env,
     sender_ek: &CompressedPubkey,
     recipient_ek: &CompressedPubkey,
     current_balance: &ConfidentialBalance,
@@ -1165,58 +1165,57 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     auditor_eks: &[CompressedPubkey],
     auditor_amounts: &[ConfidentialBalance],
     proof_xs: &TransferSigmaProofXs,
-) -> Scalar {
+) -> ScalarBytes {
     // rho = H(DST, G, H, P_s, P_r, P_a_{1..n}, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4n}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..30 + 4n})
     let mut bytes = FIAT_SHAMIR_TRANSFER_SIGMA_DST.to_vec();
 
-    bytes.extend(compressed_point_to_bytes(&basepoint_compressed()));
-    bytes.extend(compressed_point_to_bytes(&point_compress(
-        &hash_to_point_base(),
-    )));
-    bytes.extend(pubkey_to_bytes(sender_ek));
-    bytes.extend(pubkey_to_bytes(recipient_ek));
+    bytes.extend(basepoint().compress().to_bytes());
+    bytes.extend(hash_to_point_base().compress().to_bytes());
+    bytes.extend(sender_ek.0.to_array());
+    bytes.extend(recipient_ek.0.to_array());
     for ek in auditor_eks {
-        bytes.extend(pubkey_to_bytes(ek));
+        bytes.extend(ek.0.to_array());
     }
-    bytes.extend(balance_to_bytes(current_balance));
-    bytes.extend(balance_to_bytes(recipient_amount));
+    bytes.extend(current_balance.to_bytes());
+    bytes.extend(recipient_amount.to_bytes());
     for balance in auditor_amounts {
-        for d in balance_to_points_d(balance) {
-            bytes.extend(compressed_point_to_bytes(&point_compress(&d)));
+        for EncryptedChunk { amount, handle } in &balance.0 {
+            bytes.extend(handle.to_bytes());
         }
     }
-    for d in balance_to_points_d(sender_amount) {
-        bytes.extend(compressed_point_to_bytes(&point_compress(&d)));
+    for chunk in &sender_amount.0 {
+        bytes.extend(chunk.handle.to_bytes());
     }
-    bytes.extend(balance_to_bytes(new_balance));
-    bytes.extend(point_to_bytes(&proof_xs.x1));
+    bytes.extend(new_balance.to_bytes());
+    bytes.extend(&proof_xs.x1.to_bytes());
     for x in &proof_xs.x2s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
     for x in &proof_xs.x3s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
     for x in &proof_xs.x4s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
-    bytes.extend(point_to_bytes(&proof_xs.x5));
+    bytes.extend(&proof_xs.x5.to_bytes());
     for x in &proof_xs.x6s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
     for xs in &proof_xs.x7s {
         for x in xs {
-            bytes.extend(point_to_bytes(x));
+            bytes.extend(x.to_bytes());
         }
     }
     for x in &proof_xs.x8s {
-        bytes.extend(point_to_bytes(x));
+        bytes.extend(x.to_bytes());
     }
 
-    new_scalar_from_sha2_512(&bytes)
+    let bn = BytesN::<32>::from_array(e, new_scalar_from_sha2_512(&bytes).as_bytes());
+    ScalarBytes(bn)
 }
 
 /// Calculates the product of the provided scalars.
-fn scalar_mul_3(scalar1: &Scalar, scalar2: &Scalar, scalar3: &Scalar) -> Scalar {
+fn scalar_mul_3(scalar1: &ScalarBytes, scalar2: &ScalarBytes, scalar3: &ScalarBytes) -> ScalarBytes {
     let mut result = *scalar1;
 
     scalar_mul_assign(&mut result, scalar2);
@@ -1226,7 +1225,7 @@ fn scalar_mul_3(scalar1: &Scalar, scalar2: &Scalar, scalar3: &Scalar) -> Scalar 
 }
 
 /// Calculates the linear combination of the provided scalars.
-fn scalar_linear_combination(lhs: &[Scalar], rhs: &[Scalar]) -> Scalar {
+fn scalar_linear_combination(lhs: &[ScalarBytes], rhs: &[ScalarBytes]) -> ScalarBytes {
     let mut result = scalar_zero();
 
     for (l, r) in lhs.iter().zip(rhs.iter()) {
@@ -1237,7 +1236,7 @@ fn scalar_linear_combination(lhs: &[Scalar], rhs: &[Scalar]) -> Scalar {
 }
 
 /// Raises 2 to the power of the provided exponent and returns the result as a scalar.
-fn new_scalar_from_pow2(exp: u64) -> Scalar {
+fn new_scalar_from_pow2(exp: u64) -> ScalarBytes {
     new_scalar_from_u128(1 << (exp as u8))
 }
 
@@ -1298,7 +1297,7 @@ mod tests {
 
     /// Proves the normalization operation.
     fn prove_normalization(
-        dk: &Scalar,
+        dk: &ScalarBytes,
         ek: &CompressedPubkey,
         amount: u128,
         current_balance: &ConfidentialBalance,
@@ -1385,7 +1384,7 @@ mod tests {
 
     /// Proves the withdrawal operation.
     fn prove_withdrawal(
-        dk: &Scalar,
+        dk: &ScalarBytes,
         ek: &CompressedPubkey,
         amount: u64,
         new_amount: u128,
@@ -1482,7 +1481,7 @@ mod tests {
 
     /// Proves the transfer operation.
     fn prove_transfer(
-        sender_dk: &Scalar,
+        sender_dk: &ScalarBytes,
         sender_ek: &CompressedPubkey,
         recipient_ek: &CompressedPubkey,
         amount: u64,
@@ -1699,31 +1698,31 @@ mod tests {
     ) -> ConfidentialBalance {
         unimplemented!()
     }
-    fn balance_randomness_as_scalars(_randomness: &BalanceRandomness) -> Vec<Scalar> {
+    fn balance_randomness_as_scalars(_randomness: &BalanceRandomness) -> Vec<ScalarBytes> {
         unimplemented!()
     }
     fn generate_normalization_sigma_proof_randomness() -> NormalizationSigmaProofRandomness {
         unimplemented!()
     }
-    fn prove_new_balance_range(_amount: u128, _randomness: &[Scalar]) -> RangeProof {
+    fn prove_new_balance_range(_amount: u128, _randomness: &[ScalarBytes]) -> RangeProof {
         unimplemented!()
     }
-    fn basepoint_mul(_scalar: &Scalar) -> Point {
+    fn basepoint_mul(_scalar: &ScalarBytes) -> Point {
         unimplemented!()
     }
     fn point_add_assign(_point: &mut Point, _other: &Point) {
         unimplemented!()
     }
-    fn point_mul(_point: &Point, _scalar: &Scalar) -> Point {
+    fn point_mul(_point: &Point, _scalar: &ScalarBytes) -> Point {
         unimplemented!()
     }
-    fn split_into_chunks_u128(_amount: u128) -> Vec<Scalar> {
+    fn split_into_chunks_u128(_amount: u128) -> Vec<ScalarBytes> {
         unimplemented!()
     }
-    fn scalar_sub(_lhs: &Scalar, _rhs: &Scalar) -> Scalar {
+    fn scalar_sub(_lhs: &ScalarBytes, _rhs: &ScalarBytes) -> ScalarBytes {
         unimplemented!()
     }
-    fn scalar_invert(_scalar: &Scalar) -> Option<Scalar> {
+    fn scalar_invert(_scalar: &ScalarBytes) -> Option<ScalarBytes> {
         unimplemented!()
     }
     fn generate_withdrawal_sigma_proof_randomness() -> WithdrawalSigmaProofRandomness {
@@ -1739,7 +1738,7 @@ mod tests {
     fn generate_transfer_sigma_proof_randomness() -> TransferSigmaProofRandomness {
         unimplemented!()
     }
-    fn prove_transfer_amount_range(_amount: u64, _randomness: &[Scalar]) -> RangeProof {
+    fn prove_transfer_amount_range(_amount: u64, _randomness: &[ScalarBytes]) -> RangeProof {
         unimplemented!()
     }
     fn point_sub_assign(_point: &mut Point, _other: &Point) {
@@ -1749,23 +1748,23 @@ mod tests {
     // Placeholder types for randomness structs
     pub type BalanceRandomness = Vec<u8>;
     pub struct NormalizationSigmaProofRandomness {
-        pub x1s: Vec<Scalar>,
-        pub x2: Scalar,
-        pub x3: Scalar,
-        pub x4s: Vec<Scalar>,
+        pub x1s: Vec<ScalarBytes>,
+        pub x2: ScalarBytes,
+        pub x3: ScalarBytes,
+        pub x4s: Vec<ScalarBytes>,
     }
     pub struct WithdrawalSigmaProofRandomness {
-        pub x1s: Vec<Scalar>,
-        pub x2: Scalar,
-        pub x3: Scalar,
-        pub x4s: Vec<Scalar>,
+        pub x1s: Vec<ScalarBytes>,
+        pub x2: ScalarBytes,
+        pub x3: ScalarBytes,
+        pub x4s: Vec<ScalarBytes>,
     }
     pub struct TransferSigmaProofRandomness {
-        pub x1s: Vec<Scalar>,
-        pub x2: Scalar,
-        pub x3s: Vec<Scalar>,
-        pub x4s: Vec<Scalar>,
-        pub x5: Scalar,
-        pub x6s: Vec<Scalar>,
+        pub x1s: Vec<ScalarBytes>,
+        pub x2: ScalarBytes,
+        pub x3s: Vec<ScalarBytes>,
+        pub x4s: Vec<ScalarBytes>,
+        pub x5: ScalarBytes,
+        pub x6s: Vec<ScalarBytes>,
     }
 }
