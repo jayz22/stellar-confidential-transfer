@@ -19,7 +19,9 @@ impl CompressedRistrettoBytes {
     }
 }
 
-// TODO: Add `EncryptedChunkBytes`?
+#[derive(Debug, Clone)]
+pub struct EncryptedChunkBytes(pub Vec<u8>);
+
 #[derive(Debug, Clone)]
 pub struct EncryptedChunk {
     amount: RistrettoPoint, // C
@@ -34,22 +36,21 @@ impl EncryptedChunk {
         }
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> EncryptedChunkBytes {
         let mut bytes = Vec::new();
         bytes.extend(arith::point_to_bytes(&self.amount));
         bytes.extend(arith::point_to_bytes(&self.handle));
-        bytes
+        EncryptedChunkBytes(bytes)
     }
 
-    pub fn from_bytes(bytes: &Vec<u8>) -> Self {
-        assert!(bytes.len() == 64, "EncryptedChunk must be 64 bytes");
-        let amount = arith::bytes_to_point(&bytes[0..32]);
-        let handle = arith::bytes_to_point(&bytes[32..64]);
+    pub fn from_bytes(bytes: &EncryptedChunkBytes) -> Self {
+        assert!(bytes.0.len() == 64, "EncryptedChunk must be 64 bytes");
+        let amount = arith::bytes_to_point(&bytes.0[0..32]);
+        let handle = arith::bytes_to_point(&bytes.0[32..64]);
         EncryptedChunk { amount, handle }
     }
 }
 
-// TODO: Bytes versions of these
 #[derive(Debug, Clone)]
 pub struct ConfidentialAmount(pub Vec<EncryptedChunk>); // 4 chunks
 #[derive(Debug, Clone)]
@@ -77,7 +78,7 @@ impl ConfidentialBalance {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.0.iter().map(EncryptedChunk::to_bytes).flatten().collect()
+        self.0.iter().flat_map(|chunk| chunk.to_bytes().0).collect()
     }
 }
 
