@@ -1,5 +1,11 @@
+use crate::{
+    arith::{
+        basepoint, bytes_to_point, bytes_to_scalar, hash_to_point_base, new_scalar_from_sha2_512,
+    },
+    confidential_balance::*,
+};
+use curve25519_dalek::{RistrettoPoint, Scalar};
 use soroban_sdk::{Bytes, BytesN, Env};
-use crate::{arith::{basepoint, hash_to_point_base, new_scalar_from_sha2_512}, confidential_balance::*};
 
 const FIAT_SHAMIR_WITHDRAWAL_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/WithdrawalProofFiatShamir";
@@ -12,7 +18,7 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof
 const BULLETPROOFS_NUM_BITS: u64 = 16;
 
 #[derive(Debug, Clone)]
-pub struct ScalarBytes(BytesN<32>);
+pub struct ScalarBytes(pub BytesN<32>);
 
 #[derive(Debug, Clone)]
 pub struct RangeProof(Bytes);
@@ -159,6 +165,272 @@ pub struct TransferSigmaProof {
     pub xs: TransferSigmaProofXs,
 }
 
+#[derive(Debug, Clone)]
+pub struct NormalizationSigmaProofXsImpl {
+    // proves the relation: Σ C_i * 2^{16i} = Σ b_i 2^{16i}G + Σ sk 2^{16i} D_i
+    pub x1: RistrettoPoint,
+    // proves the key-pair relation: P = sk^-1 * H
+    pub x2: RistrettoPoint,
+    // proves the relation that the encrypted C value for every chunk is correct, C_i = m_i*G + r_i*H
+    pub x3s: Vec<RistrettoPoint>,
+    // proves the decrption handle for each chunk is correct, D_i = r_i*P
+    pub x4s: Vec<RistrettoPoint>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NormalizationSigmaProofAlphasImpl {
+    pub a1s: Vec<Scalar>, // hides the unencrypted amount chunks
+    pub a2: Scalar,       // hides dk
+    pub a3: Scalar,       // hides dk^-1
+    pub a4s: Vec<Scalar>, // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
+}
+
+#[derive(Debug, Clone)]
+pub struct WithdrawalSigmaProofXsImpl {
+    pub x1: RistrettoPoint,
+    // proves the key-pair relation: P = sk^-1 * H
+    pub x2: RistrettoPoint,
+    // proves the relation that the encrypted C value for every chunk is correct, C_i = m_i*G + r_i*H
+    pub x3s: Vec<RistrettoPoint>,
+    // proves the decrption handle for each chunk is correct, D_i = r_i*P
+    pub x4s: Vec<RistrettoPoint>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WithdrawalSigmaProofAlphasImpl {
+    // unencrypted amount chunks
+    pub a1s: Vec<Scalar>,
+    // dk
+    pub a2: Scalar,
+    // dk^-1
+    pub a3: Scalar,
+    // encryption randomness
+    pub a4s: Vec<Scalar>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransferSigmaProofXsImpl {
+    // Balance preservation commitment
+    // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
+    pub x1: RistrettoPoint,
+    // Sender decryption handles for new balance (8 chunks)
+    // X₂ᵢ = κ₆ᵢ·sender_ek
+    pub x2s: Vec<RistrettoPoint>,
+    // Recipient decryption handles for transfer amount (4 chunks)
+    // X₃ᵢ = κ₃ᵢ·recipient_ek
+    pub x3s: Vec<RistrettoPoint>,
+    // Transfer amount encryption correctness (4 chunks)
+    // X₄ᵢ = κ₄ᵢ·G + κ₃ᵢ·H
+    pub x4s: Vec<RistrettoPoint>,
+    // Sender key-pair relationship: P = (sk)^-1 * H
+    // X₅ = κ₅·H
+    pub x5: RistrettoPoint,
+    // New balance encryption correctness (8 chunks)
+    // X₆ᵢ = κ₁ᵢ·G + κ₆ᵢ·H
+    pub x6s: Vec<RistrettoPoint>,
+    // Auditor decryption handles for transfer amount (auditors × 4 chunks)
+    // X₇ⱼᵢ = κ₃ᵢ·auditor_ekⱼ
+    pub x7s: Vec<Vec<RistrettoPoint>>,
+    // Sender decryption handles for sender amount (4 chunks)
+    // X₈ᵢ = κ₃ᵢ·sender_ek
+    pub x8s: Vec<RistrettoPoint>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransferSigmaProofAlphasImpl {
+    pub a1s: Vec<Scalar>, // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
+    pub a2: Scalar,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
+    pub a3s: Vec<Scalar>, // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
+    pub a4s: Vec<Scalar>, // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
+    pub a5: Scalar,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
+    pub a6s: Vec<Scalar>, // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
+}
+
+// Implementation of from_bytes methods for all Impl types
+impl WithdrawalSigmaProofXsImpl {
+    pub fn from_bytes(xs: &WithdrawalSigmaProofXs) -> Result<Self, Error> {
+        let x1 = bytes_to_point(&xs.x1.to_bytes().try_into().map_err(|_| Error::Unknown)?);
+        let x2 = bytes_to_point(&xs.x2.to_bytes().try_into().map_err(|_| Error::Unknown)?);
+
+        let mut x3s = Vec::new();
+        for x in &xs.x3s {
+            let point = bytes_to_point(&x.to_bytes().try_into().map_err(|_| Error::Unknown)?);
+            x3s.push(point);
+        }
+
+        let mut x4s = Vec::new();
+        for x in &xs.x4s {
+            let point = bytes_to_point(&x.to_bytes().try_into().map_err(|_| Error::Unknown)?);
+            x4s.push(point);
+        }
+
+        Ok(Self { x1, x2, x3s, x4s })
+    }
+}
+
+impl WithdrawalSigmaProofAlphasImpl {
+    pub fn from_bytes(alphas: &WithdrawalSigmaProofAlphas) -> Result<Self, Error> {
+        let mut a1s = Vec::new();
+        for a in &alphas.a1s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a1s.push(scalar);
+        }
+
+        let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
+        let a3 = bytes_to_scalar(&alphas.a3.0.to_array());
+
+        let mut a4s = Vec::new();
+        for a in &alphas.a4s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a4s.push(scalar);
+        }
+
+        Ok(Self { a1s, a2, a3, a4s })
+    }
+}
+
+impl NormalizationSigmaProofXsImpl {
+    pub fn from_bytes(xs: &NormalizationSigmaProofXs) -> Result<Self, Error> {
+        let x1 = bytes_to_point(&xs.x1.0.to_array());
+        let x2 = bytes_to_point(&xs.x2.0.to_array());
+
+        let mut x3s = Vec::new();
+        for x in &xs.x3s {
+            let point = bytes_to_point(&x.0.to_array());
+            x3s.push(point);
+        }
+
+        let mut x4s = Vec::new();
+        for x in &xs.x4s {
+            let point = bytes_to_point(&x.0.to_array());
+            x4s.push(point);
+        }
+
+        Ok(Self { x1, x2, x3s, x4s })
+    }
+}
+
+impl NormalizationSigmaProofAlphasImpl {
+    pub fn from_bytes(alphas: &NormalizationSigmaProofAlphas) -> Result<Self, Error> {
+        let mut a1s = Vec::new();
+        for a in &alphas.a1s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a1s.push(scalar);
+        }
+
+        let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
+        let a3 = bytes_to_scalar(&alphas.a3.0.to_array());
+
+        let mut a4s = Vec::new();
+        for a in &alphas.a4s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a4s.push(scalar);
+        }
+
+        Ok(Self { a1s, a2, a3, a4s })
+    }
+}
+
+impl TransferSigmaProofXsImpl {
+    pub fn from_bytes(xs: &TransferSigmaProofXs) -> Result<Self, Error> {
+        let x1 = bytes_to_point(&xs.x1.0.to_array());
+
+        let mut x2s = Vec::new();
+        for x in &xs.x2s {
+            let point = bytes_to_point(&x.0.to_array());
+            x2s.push(point);
+        }
+
+        let mut x3s = Vec::new();
+        for x in &xs.x3s {
+            let point = bytes_to_point(&x.0.to_array());
+            x3s.push(point);
+        }
+
+        let mut x4s = Vec::new();
+        for x in &xs.x4s {
+            let point = bytes_to_point(&x.0.to_array());
+            x4s.push(point);
+        }
+
+        let x5 = bytes_to_point(&xs.x5.0.to_array());
+
+        let mut x6s = Vec::new();
+        for x in &xs.x6s {
+            let point = bytes_to_point(&x.0.to_array());
+            x6s.push(point);
+        }
+
+        let mut x7s = Vec::new();
+        for xs_inner in &xs.x7s {
+            let mut inner_points = Vec::new();
+            for x in xs_inner {
+                let point = bytes_to_point(&x.0.to_array());
+                inner_points.push(point);
+            }
+            x7s.push(inner_points);
+        }
+
+        let mut x8s = Vec::new();
+        for x in &xs.x8s {
+            let point = bytes_to_point(&x.0.to_array());
+            x8s.push(point);
+        }
+
+        Ok(Self {
+            x1,
+            x2s,
+            x3s,
+            x4s,
+            x5,
+            x6s,
+            x7s,
+            x8s,
+        })
+    }
+}
+
+impl TransferSigmaProofAlphasImpl {
+    pub fn from_bytes(alphas: &TransferSigmaProofAlphas) -> Result<Self, Error> {
+        let mut a1s = Vec::new();
+        for a in &alphas.a1s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a1s.push(scalar);
+        }
+
+        let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
+
+        let mut a3s = Vec::new();
+        for a in &alphas.a3s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a3s.push(scalar);
+        }
+
+        let mut a4s = Vec::new();
+        for a in &alphas.a4s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a4s.push(scalar);
+        }
+
+        let a5 = bytes_to_scalar(&alphas.a5.0.to_array());
+
+        let mut a6s = Vec::new();
+        for a in &alphas.a6s {
+            let scalar = bytes_to_scalar(&a.0.to_array());
+            a6s.push(scalar);
+        }
+
+        Ok(Self {
+            a1s,
+            a2,
+            a3s,
+            a4s,
+            a5,
+            a6s,
+        })
+    }
+}
+
 //
 // Proof verification functions
 //
@@ -255,102 +527,104 @@ fn verify_normalization_sigma_proof(
     new_balance: &ConfidentialBalance,
     proof: &NormalizationSigmaProof,
 ) -> Result<(), Error> {
-    let rho = fiat_shamir_normalization_sigma_proof_challenge(
-        ek,
-        current_balance,
-        new_balance,
-        &proof.xs,
-    );
-    // the normalization gammas are derived from the fiat shamir challenge, it is to prevent prover from cheating
-    // in a way that MSM cancels out
-    // that's why the gammas match the Xs, each equation multiples by a gamma on both sides (I believe)
-    // TODO: look into details below
-    let gammas = msm_normalization_gammas(&rho);
+    // let rho = fiat_shamir_normalization_sigma_proof_challenge(
+    //     ek,
+    //     current_balance,
+    //     new_balance,
+    //     &proof.xs,
+    // );
+    // // the normalization gammas are derived from the fiat shamir challenge, it is to prevent prover from cheating
+    // // in a way that MSM cancels out
+    // // that's why the gammas match the Xs, each equation multiples by a gamma on both sides (I believe)
+    // // TODO: look into details below
+    // let gammas = msm_normalization_gammas(&rho);
 
-    let mut scalars_lhs = vec![gammas.g1, gammas.g2];
-    scalars_lhs.extend(&gammas.g3s);
-    scalars_lhs.extend(&gammas.g4s);
+    // let mut scalars_lhs = vec![gammas.g1, gammas.g2];
+    // scalars_lhs.extend(&gammas.g3s);
+    // scalars_lhs.extend(&gammas.g4s);
 
-    let mut points_lhs = vec![
-        point_decompress(&proof.xs.x1)?,
-        point_decompress(&proof.xs.x2)?,
-    ];
-    points_lhs.extend(
-        proof
-            .xs
-            .x3s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    points_lhs.extend(
-        proof
-            .xs
-            .x4s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
+    // let mut points_lhs = vec![
+    //     point_decompress(&proof.xs.x1)?,
+    //     point_decompress(&proof.xs.x2)?,
+    // ];
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x3s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x4s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
 
-    let mut scalar_g = scalar_linear_combination(
-        &proof.alphas.a1s,
-        &(0..8)
-            .map(|i| new_scalar_from_pow2(i * 16))
-            .collect::<Vec<_>>(),
-    );
-    scalar_mul_assign(&mut scalar_g, &gammas.g1);
-    scalar_add_assign(
-        &mut scalar_g,
-        &scalar_linear_combination(&gammas.g3s, &proof.alphas.a1s),
-    );
+    // let mut scalar_g = scalar_linear_combination(
+    //     &proof.alphas.a1s,
+    //     &(0..8)
+    //         .map(|i| new_scalar_from_pow2(i * 16))
+    //         .collect::<Vec<_>>(),
+    // );
+    // scalar_mul_assign(&mut scalar_g, &gammas.g1);
+    // scalar_add_assign(
+    //     &mut scalar_g,
+    //     &scalar_linear_combination(&gammas.g3s, &proof.alphas.a1s),
+    // );
 
-    let mut scalar_h = scalar_mul(&gammas.g2, &proof.alphas.a3);
-    scalar_add_assign(
-        &mut scalar_h,
-        &scalar_linear_combination(&gammas.g3s, &proof.alphas.a4s),
-    );
+    // let mut scalar_h = scalar_mul(&gammas.g2, &proof.alphas.a3);
+    // scalar_add_assign(
+    //     &mut scalar_h,
+    //     &scalar_linear_combination(&gammas.g3s, &proof.alphas.a4s),
+    // );
 
-    let mut scalar_ek = scalar_mul(&gammas.g2, &rho);
-    scalar_add_assign(
-        &mut scalar_ek,
-        &scalar_linear_combination(&gammas.g4s, &proof.alphas.a4s),
-    );
+    // let mut scalar_ek = scalar_mul(&gammas.g2, &rho);
+    // scalar_add_assign(
+    //     &mut scalar_ek,
+    //     &scalar_linear_combination(&gammas.g4s, &proof.alphas.a4s),
+    // );
 
-    let scalars_current_balance_d = (0..8)
-        .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
-        .collect::<Vec<_>>();
+    // let scalars_current_balance_d = (0..8)
+    //     .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
+    //     .collect::<Vec<_>>();
 
-    let scalars_new_balance_d = (0..8)
-        .map(|i| scalar_mul(&gammas.g4s[i], &rho))
-        .collect::<Vec<_>>();
+    // let scalars_new_balance_d = (0..8)
+    //     .map(|i| scalar_mul(&gammas.g4s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    let scalars_current_balance_c = (0..8)
-        .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
-        .collect::<Vec<_>>();
+    // let scalars_current_balance_c = (0..8)
+    //     .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
+    //     .collect::<Vec<_>>();
 
-    let scalars_new_balance_c = (0..8)
-        .map(|i| scalar_mul(&gammas.g3s[i], &rho))
-        .collect::<Vec<_>>();
+    // let scalars_new_balance_c = (0..8)
+    //     .map(|i| scalar_mul(&gammas.g3s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_ek];
-    scalars_rhs.extend(scalars_current_balance_d);
-    scalars_rhs.extend(scalars_new_balance_d);
-    scalars_rhs.extend(scalars_current_balance_c);
-    scalars_rhs.extend(scalars_new_balance_c);
+    // let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_ek];
+    // scalars_rhs.extend(scalars_current_balance_d);
+    // scalars_rhs.extend(scalars_new_balance_d);
+    // scalars_rhs.extend(scalars_current_balance_c);
+    // scalars_rhs.extend(scalars_new_balance_c);
 
-    let mut points_rhs = vec![basepoint(), hash_to_point_base(), pubkey_to_point(ek)?];
-    points_rhs.extend(balance_to_points_d(current_balance));
-    points_rhs.extend(balance_to_points_d(new_balance));
-    points_rhs.extend(balance_to_points_c(current_balance));
-    points_rhs.extend(balance_to_points_c(new_balance));
+    // let mut points_rhs = vec![basepoint(), hash_to_point_base(), pubkey_to_point(ek)?];
+    // points_rhs.extend(balance_to_points_d(current_balance));
+    // points_rhs.extend(balance_to_points_d(new_balance));
+    // points_rhs.extend(balance_to_points_c(current_balance));
+    // points_rhs.extend(balance_to_points_c(new_balance));
 
-    let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
-    let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
+    // let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
+    // let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
 
-    if !point_equals(&lhs, &rhs) {
-        return Err(Error::SigmaProtocolVerifyFailed);
-    }
-    Ok(())
+    // if !point_equals(&lhs, &rhs) {
+    //     return Err(Error::SigmaProtocolVerifyFailed);
+    // }
+    // Ok(())
+
+    todo!()
 }
 
 /// Verifies the validity of the `WithdrawalSigmaProof`.
@@ -361,42 +635,44 @@ fn verify_withdrawal_sigma_proof(
     new_balance: &ConfidentialBalance,
     proof: &WithdrawalSigmaProof,
 ) -> Result<(), Error> {
-    let amount_chunks = split_into_chunks_u64(amount);
-    let amount = new_scalar_from_u64(amount);
+    todo!()
 
-    let rho = fiat_shamir_withdrawal_sigma_proof_challenge(
-        ek,
-        &amount_chunks,
-        current_balance,
-        &proof.xs,
-    );
+    // let amount_chunks = split_into_chunks_u64(amount);
+    // let amount = new_scalar_from_u64(amount);
 
-    let gammas = msm_withdrawal_gammas(&rho);
+    // let rho = fiat_shamir_withdrawal_sigma_proof_challenge(
+    //     ek,
+    //     &amount_chunks,
+    //     current_balance,
+    //     &proof.xs,
+    // );
 
-    let mut scalars_lhs = vec![gammas.g1, gammas.g2];
-    scalars_lhs.extend(&gammas.g3s);
-    scalars_lhs.extend(&gammas.g4s);
+    // let gammas = msm_withdrawal_gammas(&rho);
 
-    let mut points_lhs = vec![
-        point_decompress(&proof.xs.x1)?,
-        point_decompress(&proof.xs.x2)?,
-    ];
-    points_lhs.extend(
-        proof
-            .xs
-            .x3s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    points_lhs.extend(
-        proof
-            .xs
-            .x4s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
+    // let mut scalars_lhs = vec![gammas.g1, gammas.g2];
+    // scalars_lhs.extend(&gammas.g3s);
+    // scalars_lhs.extend(&gammas.g4s);
+
+    // let mut points_lhs = vec![
+    //     point_decompress(&proof.xs.x1)?,
+    //     point_decompress(&proof.xs.x2)?,
+    // ];
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x3s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x4s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
 
     // Note: in standard description in the paper, the sign is plus instead of minus
     // here making it minus makes it move the rho terms to the RHS, thus can be computed with MSM
@@ -458,66 +734,66 @@ fn verify_withdrawal_sigma_proof(
     // a₃ = κ₃ - ρ·dk^(-1)
     // a₄ᵢ = κ₄ᵢ - ρ·rᵢ
 
-    let mut scalar_g = scalar_linear_combination(
-        &proof.alphas.a1s,
-        &(0..8)
-            .map(|i| new_scalar_from_pow2(i * 16))
-            .collect::<Vec<_>>(),
-    );
-    scalar_mul_assign(&mut scalar_g, &gammas.g1);
-    scalar_add_assign(
-        &mut scalar_g,
-        &scalar_linear_combination(&gammas.g3s, &proof.alphas.a1s),
-    );
-    scalar_sub_assign(&mut scalar_g, &scalar_mul_3(&gammas.g1, &rho, &amount));
+    // let mut scalar_g = scalar_linear_combination(
+    //     &proof.alphas.a1s,
+    //     &(0..8)
+    //         .map(|i| new_scalar_from_pow2(i * 16))
+    //         .collect::<Vec<_>>(),
+    // );
+    // scalar_mul_assign(&mut scalar_g, &gammas.g1);
+    // scalar_add_assign(
+    //     &mut scalar_g,
+    //     &scalar_linear_combination(&gammas.g3s, &proof.alphas.a1s),
+    // );
+    // scalar_sub_assign(&mut scalar_g, &scalar_mul_3(&gammas.g1, &rho, &amount));
 
-    let mut scalar_h = scalar_mul(&gammas.g2, &proof.alphas.a3);
-    scalar_add_assign(
-        &mut scalar_h,
-        &scalar_linear_combination(&gammas.g3s, &proof.alphas.a4s),
-    );
+    // let mut scalar_h = scalar_mul(&gammas.g2, &proof.alphas.a3);
+    // scalar_add_assign(
+    //     &mut scalar_h,
+    //     &scalar_linear_combination(&gammas.g3s, &proof.alphas.a4s),
+    // );
 
-    let mut scalar_ek = scalar_mul(&gammas.g2, &rho);
-    scalar_add_assign(
-        &mut scalar_ek,
-        &scalar_linear_combination(&gammas.g4s, &proof.alphas.a4s),
-    );
+    // let mut scalar_ek = scalar_mul(&gammas.g2, &rho);
+    // scalar_add_assign(
+    //     &mut scalar_ek,
+    //     &scalar_linear_combination(&gammas.g4s, &proof.alphas.a4s),
+    // );
 
-    let scalars_current_balance_d = (0..8)
-        .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
-        .collect::<Vec<_>>();
+    // let scalars_current_balance_d = (0..8)
+    //     .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
+    //     .collect::<Vec<_>>();
 
-    let scalars_new_balance_d = (0..8)
-        .map(|i| scalar_mul(&gammas.g4s[i], &rho))
-        .collect::<Vec<_>>();
+    // let scalars_new_balance_d = (0..8)
+    //     .map(|i| scalar_mul(&gammas.g4s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    let scalars_current_balance_c = (0..8)
-        .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
-        .collect::<Vec<_>>();
+    // let scalars_current_balance_c = (0..8)
+    //     .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
+    //     .collect::<Vec<_>>();
 
-    let scalars_new_balance_c = (0..8)
-        .map(|i| scalar_mul(&gammas.g3s[i], &rho))
-        .collect::<Vec<_>>();
+    // let scalars_new_balance_c = (0..8)
+    //     .map(|i| scalar_mul(&gammas.g3s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_ek];
-    scalars_rhs.extend(scalars_current_balance_d);
-    scalars_rhs.extend(scalars_new_balance_d);
-    scalars_rhs.extend(scalars_current_balance_c);
-    scalars_rhs.extend(scalars_new_balance_c);
+    // let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_ek];
+    // scalars_rhs.extend(scalars_current_balance_d);
+    // scalars_rhs.extend(scalars_new_balance_d);
+    // scalars_rhs.extend(scalars_current_balance_c);
+    // scalars_rhs.extend(scalars_new_balance_c);
 
-    let mut points_rhs = vec![basepoint(), hash_to_point_base(), pubkey_to_point(ek)?];
-    points_rhs.extend(balance_to_points_d(current_balance));
-    points_rhs.extend(balance_to_points_d(new_balance));
-    points_rhs.extend(balance_to_points_c(current_balance));
-    points_rhs.extend(balance_to_points_c(new_balance));
+    // let mut points_rhs = vec![basepoint(), hash_to_point_base(), pubkey_to_point(ek)?];
+    // points_rhs.extend(balance_to_points_d(current_balance));
+    // points_rhs.extend(balance_to_points_d(new_balance));
+    // points_rhs.extend(balance_to_points_c(current_balance));
+    // points_rhs.extend(balance_to_points_c(new_balance));
 
-    let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
-    let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
+    // let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
+    // let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
 
-    if !point_equals(&lhs, &rhs) {
-        return Err(Error::SigmaProtocolVerifyFailed);
-    }
-    Ok(())
+    // if !point_equals(&lhs, &rhs) {
+    //     return Err(Error::SigmaProtocolVerifyFailed);
+    // }
+    // Ok(())
 }
 
 /// Verifies the validity of the `TransferSigmaProof`.
@@ -532,328 +808,329 @@ fn verify_transfer_sigma_proof(
     auditor_amounts: &[ConfidentialBalance],
     proof: &TransferSigmaProof,
 ) -> Result<(), Error> {
-    let rho = fiat_shamir_transfer_sigma_proof_challenge(
-        sender_ek,
-        recipient_ek,
-        current_balance,
-        new_balance,
-        sender_amount,
-        recipient_amount,
-        auditor_eks,
-        auditor_amounts,
-        &proof.xs,
-    );
+    todo!()
+    // let rho = fiat_shamir_transfer_sigma_proof_challenge(
+    //     sender_ek,
+    //     recipient_ek,
+    //     current_balance,
+    //     new_balance,
+    //     sender_amount,
+    //     recipient_amount,
+    //     auditor_eks,
+    //     auditor_amounts,
+    //     &proof.xs,
+    // );
 
-    let gammas = msm_transfer_gammas(&rho, proof.xs.x7s.len());
+    // let gammas = msm_transfer_gammas(&rho, proof.xs.x7s.len());
 
-    let mut scalars_lhs = vec![gammas.g1];
-    scalars_lhs.extend(&gammas.g2s);
-    scalars_lhs.extend(&gammas.g3s);
-    scalars_lhs.extend(&gammas.g4s);
-    scalars_lhs.push(gammas.g5);
-    scalars_lhs.extend(&gammas.g6s);
-    for gamma in &gammas.g7s {
-        scalars_lhs.extend(gamma);
-    }
-    scalars_lhs.extend(&gammas.g8s);
+    // let mut scalars_lhs = vec![gammas.g1];
+    // scalars_lhs.extend(&gammas.g2s);
+    // scalars_lhs.extend(&gammas.g3s);
+    // scalars_lhs.extend(&gammas.g4s);
+    // scalars_lhs.push(gammas.g5);
+    // scalars_lhs.extend(&gammas.g6s);
+    // for gamma in &gammas.g7s {
+    //     scalars_lhs.extend(gamma);
+    // }
+    // scalars_lhs.extend(&gammas.g8s);
 
-    let mut points_lhs = vec![point_decompress(&proof.xs.x1)?];
-    points_lhs.extend(
-        proof
-            .xs
-            .x2s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    points_lhs.extend(
-        proof
-            .xs
-            .x3s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    points_lhs.extend(
-        proof
-            .xs
-            .x4s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    points_lhs.push(point_decompress(&proof.xs.x5)?);
-    points_lhs.extend(
-        proof
-            .xs
-            .x6s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    for xs in &proof.xs.x7s {
-        points_lhs.extend(
-            xs.iter()
-                .map(|x| point_decompress(x))
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-    }
-    points_lhs.extend(
-        proof
-            .xs
-            .x8s
-            .iter()
-            .map(|x| point_decompress(x))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
+    // let mut points_lhs = vec![point_decompress(&proof.xs.x1)?];
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x2s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x3s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x4s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // points_lhs.push(point_decompress(&proof.xs.x5)?);
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x6s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // for xs in &proof.xs.x7s {
+    //     points_lhs.extend(
+    //         xs.iter()
+    //             .map(|x| point_decompress(x))
+    //             .collect::<Result<Vec<_>, _>>()?,
+    //     );
+    // }
+    // points_lhs.extend(
+    //     proof
+    //         .xs
+    //         .x8s
+    //         .iter()
+    //         .map(|x| point_decompress(x))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
 
-    // scalar_g = γ₁·Σ(a₁ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₄ᵢ) + Σ(γ₆ᵢ·a₁ᵢ)
-    let mut scalar_g = scalar_linear_combination(
-        &proof.alphas.a1s,
-        &(0..8)
-            .map(|i| new_scalar_from_pow2(i * 16))
-            .collect::<Vec<_>>(),
-    );
-    scalar_mul_assign(&mut scalar_g, &gammas.g1);
-    for i in 0..4 {
-        scalar_add_assign(
-            &mut scalar_g,
-            &scalar_mul(&gammas.g4s[i], &proof.alphas.a4s[i]),
-        );
-    }
-    scalar_add_assign(
-        &mut scalar_g,
-        &scalar_linear_combination(&gammas.g6s, &proof.alphas.a1s),
-    );
+    // // scalar_g = γ₁·Σ(a₁ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₄ᵢ) + Σ(γ₆ᵢ·a₁ᵢ)
+    // let mut scalar_g = scalar_linear_combination(
+    //     &proof.alphas.a1s,
+    //     &(0..8)
+    //         .map(|i| new_scalar_from_pow2(i * 16))
+    //         .collect::<Vec<_>>(),
+    // );
+    // scalar_mul_assign(&mut scalar_g, &gammas.g1);
+    // for i in 0..4 {
+    //     scalar_add_assign(
+    //         &mut scalar_g,
+    //         &scalar_mul(&gammas.g4s[i], &proof.alphas.a4s[i]),
+    //     );
+    // }
+    // scalar_add_assign(
+    //     &mut scalar_g,
+    //     &scalar_linear_combination(&gammas.g6s, &proof.alphas.a1s),
+    // );
 
-    // scalar_h = γ₅·a₅ + Σ(γ₁·a₆ᵢ·2¹⁶ⁱ) - Σ(γ₁·a₃ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₃ᵢ) + Σ(γ₆ᵢ·a₆ᵢ)
-    let mut scalar_h = scalar_mul(&gammas.g5, &proof.alphas.a5);
-    for i in 0..8 {
-        scalar_add_assign(
-            &mut scalar_h,
-            &scalar_mul_3(
-                &gammas.g1,
-                &proof.alphas.a6s[i],
-                &new_scalar_from_pow2(i * 16),
-            ),
-        );
-    }
-    for i in 0..4 {
-        scalar_sub_assign(
-            &mut scalar_h,
-            &scalar_mul_3(
-                &gammas.g1,
-                &proof.alphas.a3s[i],
-                &new_scalar_from_pow2(i * 16),
-            ),
-        );
-    }
-    scalar_add_assign(
-        &mut scalar_h,
-        &scalar_linear_combination(&gammas.g4s, &proof.alphas.a3s),
-    );
-    scalar_add_assign(
-        &mut scalar_h,
-        &scalar_linear_combination(&gammas.g6s, &proof.alphas.a6s),
-    );
+    // // scalar_h = γ₅·a₅ + Σ(γ₁·a₆ᵢ·2¹⁶ⁱ) - Σ(γ₁·a₃ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₃ᵢ) + Σ(γ₆ᵢ·a₆ᵢ)
+    // let mut scalar_h = scalar_mul(&gammas.g5, &proof.alphas.a5);
+    // for i in 0..8 {
+    //     scalar_add_assign(
+    //         &mut scalar_h,
+    //         &scalar_mul_3(
+    //             &gammas.g1,
+    //             &proof.alphas.a6s[i],
+    //             &new_scalar_from_pow2(i * 16),
+    //         ),
+    //     );
+    // }
+    // for i in 0..4 {
+    //     scalar_sub_assign(
+    //         &mut scalar_h,
+    //         &scalar_mul_3(
+    //             &gammas.g1,
+    //             &proof.alphas.a3s[i],
+    //             &new_scalar_from_pow2(i * 16),
+    //         ),
+    //     );
+    // }
+    // scalar_add_assign(
+    //     &mut scalar_h,
+    //     &scalar_linear_combination(&gammas.g4s, &proof.alphas.a3s),
+    // );
+    // scalar_add_assign(
+    //     &mut scalar_h,
+    //     &scalar_linear_combination(&gammas.g6s, &proof.alphas.a6s),
+    // );
 
-    // scalar_sender_ek = Σ(γ₂ᵢ·a₆ᵢ) + γ₅·ρ + Σ(γ₈ᵢ·a₃ᵢ)
-    let mut scalar_sender_ek = scalar_linear_combination(&gammas.g2s, &proof.alphas.a6s);
-    scalar_add_assign(&mut scalar_sender_ek, &scalar_mul(&gammas.g5, &rho));
-    scalar_add_assign(
-        &mut scalar_sender_ek,
-        &scalar_linear_combination(&gammas.g8s, &proof.alphas.a3s),
-    );
+    // // scalar_sender_ek = Σ(γ₂ᵢ·a₆ᵢ) + γ₅·ρ + Σ(γ₈ᵢ·a₃ᵢ)
+    // let mut scalar_sender_ek = scalar_linear_combination(&gammas.g2s, &proof.alphas.a6s);
+    // scalar_add_assign(&mut scalar_sender_ek, &scalar_mul(&gammas.g5, &rho));
+    // scalar_add_assign(
+    //     &mut scalar_sender_ek,
+    //     &scalar_linear_combination(&gammas.g8s, &proof.alphas.a3s),
+    // );
 
-    // scalar_recipient_ek = Σ(γ₃ᵢ·a₃ᵢ)
-    let mut scalar_recipient_ek = scalar_zero();
-    for i in 0..4 {
-        scalar_add_assign(
-            &mut scalar_recipient_ek,
-            &scalar_mul(&gammas.g3s[i], &proof.alphas.a3s[i]),
-        );
-    }
+    // // scalar_recipient_ek = Σ(γ₃ᵢ·a₃ᵢ)
+    // let mut scalar_recipient_ek = scalar_zero();
+    // for i in 0..4 {
+    //     scalar_add_assign(
+    //         &mut scalar_recipient_ek,
+    //         &scalar_mul(&gammas.g3s[i], &proof.alphas.a3s[i]),
+    //     );
+    // }
 
-    // scalar_ek_auditors[j] = Σ(γ₇ⱼᵢ·a₃ᵢ)
-    let scalar_ek_auditors = gammas
-        .g7s
-        .iter()
-        .map(|gamma| {
-            let mut scalar_auditor_ek = scalar_zero();
-            for i in 0..4 {
-                scalar_add_assign(
-                    &mut scalar_auditor_ek,
-                    &scalar_mul(&gamma[i], &proof.alphas.a3s[i]),
-                );
-            }
-            scalar_auditor_ek
-        })
-        .collect::<Vec<_>>();
+    // // scalar_ek_auditors[j] = Σ(γ₇ⱼᵢ·a₃ᵢ)
+    // let scalar_ek_auditors = gammas
+    //     .g7s
+    //     .iter()
+    //     .map(|gamma| {
+    //         let mut scalar_auditor_ek = scalar_zero();
+    //         for i in 0..4 {
+    //             scalar_add_assign(
+    //                 &mut scalar_auditor_ek,
+    //                 &scalar_mul(&gamma[i], &proof.alphas.a3s[i]),
+    //             );
+    //         }
+    //         scalar_auditor_ek
+    //     })
+    //     .collect::<Vec<_>>();
 
-    // scalars_new_balance_d[i] = γ₂ᵢ·ρ - γ₁·a₂·2¹⁶ⁱ
-    let scalars_new_balance_d = (0..8)
-        .map(|i| {
-            let mut scalar = scalar_mul(&gammas.g2s[i], &rho);
-            scalar_sub_assign(
-                &mut scalar,
-                &scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)),
-            );
-            scalar
-        })
-        .collect::<Vec<_>>();
+    // // scalars_new_balance_d[i] = γ₂ᵢ·ρ - γ₁·a₂·2¹⁶ⁱ
+    // let scalars_new_balance_d = (0..8)
+    //     .map(|i| {
+    //         let mut scalar = scalar_mul(&gammas.g2s[i], &rho);
+    //         scalar_sub_assign(
+    //             &mut scalar,
+    //             &scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)),
+    //         );
+    //         scalar
+    //     })
+    //     .collect::<Vec<_>>();
 
-    // scalars_recipient_amount_d[i] = γ₃ᵢ·ρ
-    let scalars_recipient_amount_d = (0..4)
-        .map(|i| scalar_mul(&gammas.g3s[i], &rho))
-        .collect::<Vec<_>>();
+    // // scalars_recipient_amount_d[i] = γ₃ᵢ·ρ
+    // let scalars_recipient_amount_d = (0..4)
+    //     .map(|i| scalar_mul(&gammas.g3s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    // scalars_current_balance_d[i] = γ₁·a₂·2¹⁶ⁱ
-    let scalars_current_balance_d = (0..8)
-        .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
-        .collect::<Vec<_>>();
+    // // scalars_current_balance_d[i] = γ₁·a₂·2¹⁶ⁱ
+    // let scalars_current_balance_d = (0..8)
+    //     .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
+    //     .collect::<Vec<_>>();
 
-    // scalars_auditor_amount_d[j][i] = γ₇ⱼᵢ·ρ
-    let scalars_auditor_amount_d = gammas
-        .g7s
-        .iter()
-        .map(|gamma| {
-            gamma
-                .iter()
-                .map(|gamma| scalar_mul(gamma, &rho))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+    // // scalars_auditor_amount_d[j][i] = γ₇ⱼᵢ·ρ
+    // let scalars_auditor_amount_d = gammas
+    //     .g7s
+    //     .iter()
+    //     .map(|gamma| {
+    //         gamma
+    //             .iter()
+    //             .map(|gamma| scalar_mul(gamma, &rho))
+    //             .collect::<Vec<_>>()
+    //     })
+    //     .collect::<Vec<_>>();
 
-    // scalars_sender_amount_d[i] = γ₈ᵢ·ρ
-    let scalars_sender_amount_d = (0..4)
-        .map(|i| scalar_mul(&gammas.g8s[i], &rho))
-        .collect::<Vec<_>>();
+    // // scalars_sender_amount_d[i] = γ₈ᵢ·ρ
+    // let scalars_sender_amount_d = (0..4)
+    //     .map(|i| scalar_mul(&gammas.g8s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    // scalars_current_balance_c[i] = γ₁·ρ·2¹⁶ⁱ
-    let scalars_current_balance_c = (0..8)
-        .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
-        .collect::<Vec<_>>();
+    // // scalars_current_balance_c[i] = γ₁·ρ·2¹⁶ⁱ
+    // let scalars_current_balance_c = (0..8)
+    //     .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
+    //     .collect::<Vec<_>>();
 
-    // scalars_transfer_amount_c[i] = γ₄ᵢ·ρ - γ₁·ρ·2¹⁶ⁱ
-    let scalars_transfer_amount_c = (0..4)
-        .map(|i| {
-            let mut scalar = scalar_mul(&gammas.g4s[i], &rho);
-            scalar_sub_assign(
-                &mut scalar,
-                &scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)),
-            );
-            scalar
-        })
-        .collect::<Vec<_>>();
+    // // scalars_transfer_amount_c[i] = γ₄ᵢ·ρ - γ₁·ρ·2¹⁶ⁱ
+    // let scalars_transfer_amount_c = (0..4)
+    //     .map(|i| {
+    //         let mut scalar = scalar_mul(&gammas.g4s[i], &rho);
+    //         scalar_sub_assign(
+    //             &mut scalar,
+    //             &scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)),
+    //         );
+    //         scalar
+    //     })
+    //     .collect::<Vec<_>>();
 
-    // scalars_new_balance_c[i] = γ₆ᵢ·ρ
-    let scalars_new_balance_c = (0..8)
-        .map(|i| scalar_mul(&gammas.g6s[i], &rho))
-        .collect::<Vec<_>>();
+    // // scalars_new_balance_c[i] = γ₆ᵢ·ρ
+    // let scalars_new_balance_c = (0..8)
+    //     .map(|i| scalar_mul(&gammas.g6s[i], &rho))
+    //     .collect::<Vec<_>>();
 
-    let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_sender_ek, scalar_recipient_ek];
-    scalars_rhs.extend(scalar_ek_auditors);
-    scalars_rhs.extend(scalars_new_balance_d);
-    scalars_rhs.extend(scalars_recipient_amount_d);
-    scalars_rhs.extend(scalars_current_balance_d);
-    for scalars in scalars_auditor_amount_d {
-        scalars_rhs.extend(scalars);
-    }
-    scalars_rhs.extend(scalars_sender_amount_d);
-    scalars_rhs.extend(scalars_current_balance_c);
-    scalars_rhs.extend(scalars_transfer_amount_c);
-    scalars_rhs.extend(scalars_new_balance_c);
+    // let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_sender_ek, scalar_recipient_ek];
+    // scalars_rhs.extend(scalar_ek_auditors);
+    // scalars_rhs.extend(scalars_new_balance_d);
+    // scalars_rhs.extend(scalars_recipient_amount_d);
+    // scalars_rhs.extend(scalars_current_balance_d);
+    // for scalars in scalars_auditor_amount_d {
+    //     scalars_rhs.extend(scalars);
+    // }
+    // scalars_rhs.extend(scalars_sender_amount_d);
+    // scalars_rhs.extend(scalars_current_balance_c);
+    // scalars_rhs.extend(scalars_transfer_amount_c);
+    // scalars_rhs.extend(scalars_new_balance_c);
 
-    let mut points_rhs = vec![
-        basepoint(),
-        hash_to_point_base(),
-        pubkey_to_point(sender_ek)?,
-        pubkey_to_point(recipient_ek)?,
-    ];
-    points_rhs.extend(
-        auditor_eks
-            .iter()
-            .map(|ek| pubkey_to_point(ek))
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    points_rhs.extend(balance_to_points_d(new_balance));
-    points_rhs.extend(balance_to_points_d(recipient_amount));
-    points_rhs.extend(balance_to_points_d(current_balance));
-    for balance in auditor_amounts {
-        points_rhs.extend(balance_to_points_d(balance));
-    }
-    points_rhs.extend(balance_to_points_d(sender_amount));
-    points_rhs.extend(balance_to_points_c(current_balance));
-    points_rhs.extend(balance_to_points_c(recipient_amount));
-    points_rhs.extend(balance_to_points_c(new_balance));
+    // let mut points_rhs = vec![
+    //     basepoint(),
+    //     hash_to_point_base(),
+    //     pubkey_to_point(sender_ek)?,
+    //     pubkey_to_point(recipient_ek)?,
+    // ];
+    // points_rhs.extend(
+    //     auditor_eks
+    //         .iter()
+    //         .map(|ek| pubkey_to_point(ek))
+    //         .collect::<Result<Vec<_>, _>>()?,
+    // );
+    // points_rhs.extend(balance_to_points_d(new_balance));
+    // points_rhs.extend(balance_to_points_d(recipient_amount));
+    // points_rhs.extend(balance_to_points_d(current_balance));
+    // for balance in auditor_amounts {
+    //     points_rhs.extend(balance_to_points_d(balance));
+    // }
+    // points_rhs.extend(balance_to_points_d(sender_amount));
+    // points_rhs.extend(balance_to_points_c(current_balance));
+    // points_rhs.extend(balance_to_points_c(recipient_amount));
+    // points_rhs.extend(balance_to_points_c(new_balance));
 
-    // LHS = γ₁·X₁ + Σ(γ₂ᵢ·X₂ᵢ) + Σ(γ₃ᵢ·X₃ᵢ) + Σ(γ₄ᵢ·X₄ᵢ) + γ₅·X₅ + Σ(γ₆ᵢ·X₆ᵢ) + Σ(γ₇ⱼᵢ·X₇ⱼᵢ) + Σ(γ₈ᵢ·X₈ᵢ)
-    // RHS = scalar_g·G + scalar_h·H + scalar_sender_ek·P_sender + scalar_recipient_ek·P_recipient +
-    //       Σ(scalar_ek_auditors[j]·P_auditor_j) +
-    //       Σ(scalars_new_balance_d[i]·D_new_balance_i) +
-    //       Σ(scalars_recipient_amount_d[i]·D_recipient_amount_i) +
-    //       Σ(scalars_current_balance_d[i]·D_current_balance_i) +
-    //       Σ(scalars_auditor_amount_d[j][i]·D_auditor_amount_j_i) +
-    //       Σ(scalars_sender_amount_d[i]·D_sender_amount_i) +
-    //       Σ(scalars_current_balance_c[i]·C_current_balance_i) +
-    //       Σ(scalars_transfer_amount_c[i]·C_transfer_amount_i) +
-    //       Σ(scalars_new_balance_c[i]·C_new_balance_i)
+    // // LHS = γ₁·X₁ + Σ(γ₂ᵢ·X₂ᵢ) + Σ(γ₃ᵢ·X₃ᵢ) + Σ(γ₄ᵢ·X₄ᵢ) + γ₅·X₅ + Σ(γ₆ᵢ·X₆ᵢ) + Σ(γ₇ⱼᵢ·X₇ⱼᵢ) + Σ(γ₈ᵢ·X₈ᵢ)
+    // // RHS = scalar_g·G + scalar_h·H + scalar_sender_ek·P_sender + scalar_recipient_ek·P_recipient +
+    // //       Σ(scalar_ek_auditors[j]·P_auditor_j) +
+    // //       Σ(scalars_new_balance_d[i]·D_new_balance_i) +
+    // //       Σ(scalars_recipient_amount_d[i]·D_recipient_amount_i) +
+    // //       Σ(scalars_current_balance_d[i]·D_current_balance_i) +
+    // //       Σ(scalars_auditor_amount_d[j][i]·D_auditor_amount_j_i) +
+    // //       Σ(scalars_sender_amount_d[i]·D_sender_amount_i) +
+    // //       Σ(scalars_current_balance_c[i]·C_current_balance_i) +
+    // //       Σ(scalars_transfer_amount_c[i]·C_transfer_amount_i) +
+    // //       Σ(scalars_new_balance_c[i]·C_new_balance_i)
 
-    // writing the RHS into one line
-    // RHS = (γ₁·Σ(a₁ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₄ᵢ) + Σ(γ₆ᵢ·a₁ᵢ))·G +
-    //       (γ₅·a₅ + Σ(γ₁·a₆ᵢ·2¹⁶ⁱ) - Σ(γ₁·a₃ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₃ᵢ) + Σ(γ₆ᵢ·a₆ᵢ))·H +
-    //       (Σ(γ₂ᵢ·a₆ᵢ) + γ₅·ρ + Σ(γ₈ᵢ·a₃ᵢ))·P_sender +
-    //       (Σ(γ₃ᵢ·a₃ᵢ))·P_recipient +
-    //       Σ((Σ(γ₇ⱼᵢ·a₃ᵢ))·P_auditor_j) +
-    //       Σ((γ₂ᵢ·ρ - γ₁·a₂·2¹⁶ⁱ)·D_new_balance_i) +
-    //       Σ((γ₃ᵢ·ρ)·D_recipient_amount_i) +
-    //       Σ((γ₁·a₂·2¹⁶ⁱ)·D_current_balance_i) +
-    //       Σ((γ₇ⱼᵢ·ρ)·D_auditor_amount_j_i) +
-    //       Σ((γ₈ᵢ·ρ)·D_sender_amount_i) +
-    //       Σ((γ₁·ρ·2¹⁶ⁱ)·C_current_balance_i) +
-    //       Σ((γ₄ᵢ·ρ - γ₁·ρ·2¹⁶ⁱ)·C_transfer_amount_i) +
-    //       Σ((γ₆ᵢ·ρ)·C_new_balance_i)
+    // // writing the RHS into one line
+    // // RHS = (γ₁·Σ(a₁ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₄ᵢ) + Σ(γ₆ᵢ·a₁ᵢ))·G +
+    // //       (γ₅·a₅ + Σ(γ₁·a₆ᵢ·2¹⁶ⁱ) - Σ(γ₁·a₃ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₃ᵢ) + Σ(γ₆ᵢ·a₆ᵢ))·H +
+    // //       (Σ(γ₂ᵢ·a₆ᵢ) + γ₅·ρ + Σ(γ₈ᵢ·a₃ᵢ))·P_sender +
+    // //       (Σ(γ₃ᵢ·a₃ᵢ))·P_recipient +
+    // //       Σ((Σ(γ₇ⱼᵢ·a₃ᵢ))·P_auditor_j) +
+    // //       Σ((γ₂ᵢ·ρ - γ₁·a₂·2¹⁶ⁱ)·D_new_balance_i) +
+    // //       Σ((γ₃ᵢ·ρ)·D_recipient_amount_i) +
+    // //       Σ((γ₁·a₂·2¹⁶ⁱ)·D_current_balance_i) +
+    // //       Σ((γ₇ⱼᵢ·ρ)·D_auditor_amount_j_i) +
+    // //       Σ((γ₈ᵢ·ρ)·D_sender_amount_i) +
+    // //       Σ((γ₁·ρ·2¹⁶ⁱ)·C_current_balance_i) +
+    // //       Σ((γ₄ᵢ·ρ - γ₁·ρ·2¹⁶ⁱ)·C_transfer_amount_i) +
+    // //       Σ((γ₆ᵢ·ρ)·C_new_balance_i)
 
-    // Regroup the equation into chunks, grouped-by their gamma index
-    // RHS = γ₁·(Σ(a₁ᵢ·2¹⁶ⁱ)·G + Σ(a₆ᵢ·2¹⁶ⁱ)·H - Σ(a₃ᵢ·2¹⁶ⁱ)·H  - Σ(a₂·2¹⁶ⁱ)·D_new_balance_i + Σ(a₂·2¹⁶ⁱ)·D_current_balance_i + Σ(ρ·2¹⁶ⁱ)·C_current_balance_i - Σ(ρ·2¹⁶ⁱ)·C_transfer_amount_i) +
-    //       γ₂ᵢ·(a₆ᵢ·P_sender + ρ·D_new_balance_i) +
-    //       γ₃ᵢ·(a₃ᵢ·P_recipient + ρ·D_recipient_amount_i) +
-    //       γ₄ᵢ·(a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i) +
-    //       γ₅·(a₅·H + ρ·P_sender) +
-    //       γ₆ᵢ·(a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i) +
-    //       γ₇ⱼᵢ·(a₃ᵢ·P_auditor_j + ρ·D_auditor_amount_j_i) +
-    //       γ₈ᵢ·(a₃ᵢ·P_sender + ρ·D_sender_amount_i)
+    // // Regroup the equation into chunks, grouped-by their gamma index
+    // // RHS = γ₁·(Σ(a₁ᵢ·2¹⁶ⁱ)·G + Σ(a₆ᵢ·2¹⁶ⁱ)·H - Σ(a₃ᵢ·2¹⁶ⁱ)·H  - Σ(a₂·2¹⁶ⁱ)·D_new_balance_i + Σ(a₂·2¹⁶ⁱ)·D_current_balance_i + Σ(ρ·2¹⁶ⁱ)·C_current_balance_i - Σ(ρ·2¹⁶ⁱ)·C_transfer_amount_i) +
+    // //       γ₂ᵢ·(a₆ᵢ·P_sender + ρ·D_new_balance_i) +
+    // //       γ₃ᵢ·(a₃ᵢ·P_recipient + ρ·D_recipient_amount_i) +
+    // //       γ₄ᵢ·(a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i) +
+    // //       γ₅·(a₅·H + ρ·P_sender) +
+    // //       γ₆ᵢ·(a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i) +
+    // //       γ₇ⱼᵢ·(a₃ᵢ·P_auditor_j + ρ·D_auditor_amount_j_i) +
+    // //       γ₈ᵢ·(a₃ᵢ·P_sender + ρ·D_sender_amount_i)
 
-    // 1. Balance Preservation Formula
+    // // 1. Balance Preservation Formula
 
-    // 2. Sender New Balance Decryption Handle Correctness (for each chunk i)
-    // X₂ᵢ = a₆ᵢ·P_sender + ρ·D_new_balance_i
+    // // 2. Sender New Balance Decryption Handle Correctness (for each chunk i)
+    // // X₂ᵢ = a₆ᵢ·P_sender + ρ·D_new_balance_i
 
-    // 3. Recipient Transfer Amount Decryption Handle Correctness (for each chunk i)
-    // X₃ᵢ = a₃ᵢ·P_recipient + ρ·D_recipient_amount_i
+    // // 3. Recipient Transfer Amount Decryption Handle Correctness (for each chunk i)
+    // // X₃ᵢ = a₃ᵢ·P_recipient + ρ·D_recipient_amount_i
 
-    // 4. Transfer Amount Encryption Correctness (for each chunk i)
-    // X₄ᵢ = a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i
+    // // 4. Transfer Amount Encryption Correctness (for each chunk i)
+    // // X₄ᵢ = a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i
 
-    // 5. Sender Key-Pair Relationship
-    // X₅ = a₅·H + ρ·P_sender
+    // // 5. Sender Key-Pair Relationship
+    // // X₅ = a₅·H + ρ·P_sender
 
-    // 6. New Balance Encryption Correctness (for each chunk i)
-    // X₆ᵢ = a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i
+    // // 6. New Balance Encryption Correctness (for each chunk i)
+    // // X₆ᵢ = a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i
 
-    // 7. Auditor Transfer Amount Decryption Handle Correctness (for each auditor j, chunk i)
-    // X₇ⱼᵢ = a₃ᵢ·P_auditor_j + ρ·D_auditor_amount_j_i
+    // // 7. Auditor Transfer Amount Decryption Handle Correctness (for each auditor j, chunk i)
+    // // X₇ⱼᵢ = a₃ᵢ·P_auditor_j + ρ·D_auditor_amount_j_i
 
-    // 8. Sender Amount Decryption Handle Correctness (for each chunk i)
-    // X₈ᵢ = a₃ᵢ·P_sender + ρ·D_sender_amount_i
+    // // 8. Sender Amount Decryption Handle Correctness (for each chunk i)
+    // // X₈ᵢ = a₃ᵢ·P_sender + ρ·D_sender_amount_i
 
-    let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
-    let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
+    // let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
+    // let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
 
-    if !point_equals(&lhs, &rhs) {
-        return Err(Error::SigmaProtocolVerifyFailed);
-    }
-    Ok(())
+    // if !point_equals(&lhs, &rhs) {
+    //     return Err(Error::SigmaProtocolVerifyFailed);
+    // }
+    // Ok(())
 }
 
 /// Verifies the validity of the `NewBalanceRangeProof`.
@@ -1215,7 +1492,11 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
 }
 
 /// Calculates the product of the provided scalars.
-fn scalar_mul_3(scalar1: &ScalarBytes, scalar2: &ScalarBytes, scalar3: &ScalarBytes) -> ScalarBytes {
+fn scalar_mul_3(
+    scalar1: &ScalarBytes,
+    scalar2: &ScalarBytes,
+    scalar3: &ScalarBytes,
+) -> ScalarBytes {
     let mut result = *scalar1;
 
     scalar_mul_assign(&mut result, scalar2);

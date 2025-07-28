@@ -1,13 +1,17 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, events, symbol_short, token::TokenInterface, Address, Bytes, BytesN, Env, String, Symbol, Vec
+    contract, contractimpl, contracttype, events, symbol_short, token::TokenInterface, Address,
+    Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 use crate::utils::*;
-use stellar_confidential_crypto::{proof::{
-    CompressedPubkey, ConfidentialAmount, ConfidentialBalance, NormalizationProof, TransferProof,
-    WithdrawalProof, verify_withdrawal_proof
-}, ConfidentialAmount};
+use stellar_confidential_crypto::{
+    proof::{
+        verify_withdrawal_proof, CompressedPubkey, ConfidentialAmount, ConfidentialBalance,
+        NormalizationProof, TransferProof, WithdrawalProof,
+    },
+    ConfidentialAmount,
+};
 
 const MAX_PENDING_BALANCE_COUNTER: u32 = 0x10000;
 
@@ -82,13 +86,16 @@ impl ConfidentialToken {
 
         // TODO: Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`.
         acc_ext.pending_balance = ConfidentialAmount::new_amount_with_no_randomness(amt);
-        
+
         // Increment `acc`'s `pending_balance_counter`
         acc_ext.pending_counter += 1;
         write_account_confidential_ext(e, acc.clone(), &acc_ext);
 
         // Update token's total confidential supply
-        token_ext.total_confidential_supply.checked_add(amt as u128).unwrap();
+        token_ext
+            .total_confidential_supply
+            .checked_add(amt as u128)
+            .unwrap();
         write_token_confidential_ext(e, &token_ext);
 
         //  Emits an event
@@ -117,15 +124,22 @@ impl ConfidentialToken {
         }
 
         // Verifies the WithdrawalProof against current balance, new balance, and amount
-        verify_withdrawal_proof(&acc_ext.encryption_key, amt, &acc_ext.available_balance, &new_balance, &proof)
-            .map_err(|_| panic!("withdrawal proof verification failed"));
+        verify_withdrawal_proof(
+            &acc_ext.encryption_key,
+            amt,
+            &acc_ext.available_balance,
+            &new_balance,
+            &proof,
+        )
+        .map_err(|_| panic!("withdrawal proof verification failed"));
 
         // Sets `acc`'s `available_balance` to `new_balance`
         acc_ext.available_balance = new_balance;
         write_account_confidential_ext(e, acc.clone(), &acc_ext);
 
         // Update token's total confidential supply (decrease)
-        token_ext.total_confidential_supply = token_ext.total_confidential_supply
+        token_ext.total_confidential_supply = token_ext
+            .total_confidential_supply
             .checked_sub(amt as u128)
             .unwrap_or_else(|| panic!("insufficient total confidential supply"));
         write_token_confidential_ext(e, &token_ext);
