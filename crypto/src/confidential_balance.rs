@@ -1,7 +1,9 @@
+use crate::arith;
 // TODO: Uncomment RangeProof import
 use crate::{arith::new_scalar_from_u64/* , RangeProof*/};
-use curve25519_dalek::ristretto::CompressedRistretto;
+use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek::traits::Identity;
 use soroban_sdk::BytesN;
 
 pub const AMOUNT_CHUNKS: u64 = 4;
@@ -17,10 +19,20 @@ impl CompressedRistrettoBytes {
     }
 }
 
+// TODO: Add `EncryptedChunkBytes`?
 #[derive(Debug, Clone)]
 pub struct EncryptedChunk {
-    pub amount: CompressedRistrettoBytes, // C
-    pub handle: CompressedRistrettoBytes, // D
+    pub amount: RistrettoPoint, // C
+    pub handle: RistrettoPoint, // D
+}
+
+impl EncryptedChunk {
+    pub fn new_chunk_no_randomness(val: &Scalar) -> EncryptedChunk {
+        EncryptedChunk {
+            amount: arith::basepoint_mul(val),
+            handle: RistrettoPoint::identity(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -39,14 +51,15 @@ impl ConfidentialBalance {
         todo!()
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for chunk in &self.0 {
-            bytes.extend(chunk.amount.0.to_array());
-            bytes.extend(chunk.handle.0.to_array());
-        }
-        bytes
-    }
+    // TODO: Fixup
+    // pub fn to_bytes(&self) -> Vec<u8> {
+    //     let mut bytes = Vec::new();
+    //     for chunk in &self.0 {
+    //         bytes.extend(chunk.amount.0.to_array());
+    //         bytes.extend(chunk.handle.0.to_array());
+    //     }
+    //     bytes
+    // }
 }
 
 /// Splits a 64-bit integer amount into four 16-bit chunks, represented as `Scalar` values.

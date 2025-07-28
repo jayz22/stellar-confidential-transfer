@@ -70,6 +70,12 @@ pub fn basepoint() -> RistrettoPoint {
     constants::RISTRETTO_BASEPOINT_POINT
 }
 
+// TODO: Test
+/// Multiply the base point by a scalar.
+pub fn basepoint_mul(scalar: &Scalar) -> RistrettoPoint {
+    scalar * constants::RISTRETTO_BASEPOINT_TABLE
+}
+
 /// Returns the hash-to-point result of serializing the basepoint of the
 /// Ristretto255 group.
 pub fn hash_to_point_base() -> RistrettoPoint {
