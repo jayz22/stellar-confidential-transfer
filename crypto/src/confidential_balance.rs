@@ -1,5 +1,5 @@
 use soroban_sdk::BytesN;
-use crate::arith::new_scalar_from_u64;
+use crate::{arith::new_scalar_from_u64, RangeProof};
 use curve25519_dalek::scalar::Scalar;
 
 pub const AMOUNT_CHUNKS: u64 = 4;
@@ -34,7 +34,7 @@ impl ConfidentialAmount {
 }
 
 impl ConfidentialBalance {
-    pub fn new_balance_with_no_randomness(amount: u64) -> Self {
+    pub fn new_balance_with_no_randomness(balance: u128) -> Self {
         todo!()
     } 
 
@@ -54,4 +54,21 @@ pub fn split_into_chunks_u64(amount: u64) -> Vec<Scalar> {
         let chunk = (amount >> (i * CHUNK_SIZE_BITS)) & 0xffff;
         new_scalar_from_u64(chunk)
     }).collect()
+}
+
+
+pub fn prove_new_balance_range(new_balance: u128, randomness: &Vec<Scalar>) -> RangeProof {
+    todo!()
+}
+
+pub fn prove_transfer_amount_range(new_amount: u64, randomness: &Vec<Scalar>) -> RangeProof {
+    todo!()
+}
+
+pub fn verify_new_balance_range_proof(new_balance: &ConfidentialBalance, proof: &RangeProof) {
+    todo!()
+}
+
+pub fn verify_transfer_amount_range_proof(new_amount: &ConfidentialAmount, proof: &RangeProof) {
+    todo!()
 }

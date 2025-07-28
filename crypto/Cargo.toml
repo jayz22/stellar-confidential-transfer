@@ -16,6 +16,7 @@ curve25519-dalek = { workspace = true }
 soroban-sdk = { workspace = true }
 solana-zk-sdk = {workspace = true}
 sha2 = {workspace = true}
+bulletproofs = {workspace = true}
 
 [dev-dependencies]
 rand = "0.8"
