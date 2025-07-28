@@ -7,9 +7,9 @@ pub const BALANCE_CHUNKS: u64 = 8;
 pub const CHUNK_SIZE_BITS: u64 = 16;
 
 #[derive(Debug, Clone)]
-pub struct CompressedRistretto(pub BytesN<32>);
+pub struct CompressedRistrettoBytes(pub BytesN<32>);
 
-impl CompressedRistretto {
+impl CompressedRistrettoBytes {
     pub fn to_bytes(&self) -> Vec<u8> {
         self.0.to_array().to_vec()
     }
@@ -17,8 +17,8 @@ impl CompressedRistretto {
 
 #[derive(Debug, Clone)]
 pub struct EncryptedChunk {
-    pub amount: CompressedRistretto, // C
-    pub handle: CompressedRistretto, // D
+    pub amount: CompressedRistrettoBytes, // C
+    pub handle: CompressedRistrettoBytes, // D
 }
 
 #[derive(Debug, Clone)]
