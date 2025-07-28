@@ -4,7 +4,8 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use sha2::Sha512;
 
-use crate::{ScalarBytes, AMOUNT_CHUNKS, CHUNK_SIZE_BITS};
+// TODO: Uncomment
+// use crate::{ScalarBytes, AMOUNT_CHUNKS, CHUNK_SIZE_BITS};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// scalar helpers
