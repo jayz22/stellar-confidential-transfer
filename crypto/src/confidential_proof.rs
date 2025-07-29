@@ -21,6 +21,10 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
 // [0, 2^16). Is that upper bound right? Should it be up to 2^32? Or can we
 // assume all chunks are normalized to 16 bits?
 
+// TODO: Feels like there's a lot of deduplication that can be done here. The
+// only real difference between these proofs is the number of chunks. Maybe we
+// can extract some common helper functions here.
+
 // Chunks a u128 value into 8 16-bit chunks. For compatibility with the
 // bulletproofs library, this extends each chunk to 64 bits.
 fn chunk_u128(value: u128) -> [u64; 8] {
