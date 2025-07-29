@@ -1,5 +1,6 @@
 use crate::RangeProofBytes;
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
+use curve25519_dalek::ristretto::CompressedRistretto;
 use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
 use soroban_sdk::{Bytes, Env};
@@ -63,6 +64,7 @@ pub fn prove_new_balance_range(
     RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes))
 }
 
+// TOOD: Still need to cleanup this function
 pub fn prove_transfer_amount_range(
     new_amount: u64,
     randomness: &[Scalar; AMOUNT_CHUNKS],
@@ -104,10 +106,40 @@ pub fn prove_transfer_amount_range(
 }
 
 pub fn verify_new_balance_range_proof(
-    _new_balance: &ConfidentialBalance,
-    _proof: &RangeProofBytes,
-) {
-    todo!()
+    new_balance: &ConfidentialBalance,
+    proof: &RangeProofBytes,
+) -> Result<(), &'static str> {
+    // Create the same bulletproof generators used in proving
+    let pc_gens = PedersenGens::default();
+    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, BALANCE_CHUNKS);
+    
+    // Create transcript with the same domain separation
+    let mut transcript = Transcript::new(BULLETPROOFS_DST);
+    
+    // Extract Pedersen commitments from the confidential balance
+    let balance_points = new_balance.get_encrypted_balances();
+    
+    // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
+    let commitments: Vec<CompressedRistretto> = balance_points
+        .iter()
+        .map(|point| point.compress())
+        .collect();
+    
+    // Deserialize the proof
+    let proof_bytes: Vec<u8> = proof.0.iter().collect();
+    let range_proof = RangeProof::from_bytes(&proof_bytes)
+        .map_err(|_| "Failed to deserialize range proof")?;
+    
+    // Verify the range proof
+    range_proof
+        .verify_multiple(
+            &bp_gens,
+            &pc_gens,
+            &mut transcript,
+            &commitments,
+            CHUNK_SIZE_BITS as usize,
+        )
+        .map_err(|_| "Range proof verification failed")
 }
 
 pub fn verify_transfer_amount_range_proof(
@@ -115,4 +147,106 @@ pub fn verify_transfer_amount_range_proof(
     _proof: &RangeProofBytes,
 ) {
     todo!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::arith::{basepoint_mul, new_scalar_from_u64};
+    use curve25519_dalek::traits::Identity;
+    use curve25519_dalek::RistrettoPoint;
+    
+    #[test]
+    fn test_prove_and_verify_new_balance_range() {
+        // Test with a valid 128-bit balance
+        let balance = 0x123456789ABCDEFu128;
+        
+        // Generate random scalars for the proof
+        let mut randomness = [Scalar::ZERO; BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            randomness[i] = Scalar::from(i as u64 + 1); // Simple non-zero scalars for testing
+        }
+        
+        // Create the range proof
+        let proof = prove_new_balance_range(balance, &randomness);
+        
+        // Create a confidential balance with the same chunks and randomness
+        // This simulates having encrypted chunks where the commitments match the proof
+        let chunks = chunk_u128(balance);
+        let mut encrypted_chunks = [crate::confidential_balance::EncryptedChunk {
+            amount: RistrettoPoint::identity(),
+            handle: RistrettoPoint::identity(),
+        }; BALANCE_CHUNKS];
+        
+        // Create Pedersen commitments for each chunk using the same generators as the proof
+        let pc_gens = PedersenGens::default();
+        for i in 0..BALANCE_CHUNKS {
+            let chunk_scalar = new_scalar_from_u64(chunks[i]);
+            let commitment = pc_gens.commit(chunk_scalar, randomness[i]).compress().decompress().unwrap();
+            encrypted_chunks[i].amount = commitment;
+        }
+        
+        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+        
+        // Verify the proof
+        let result = verify_new_balance_range_proof(&confidential_balance, &proof);
+        assert!(result.is_ok(), "Proof verification failed: {:?}", result);
+    }
+    
+    #[test]
+    fn test_verify_with_wrong_balance_fails() {
+        // Create a proof for one balance
+        let balance = 12345u128;
+        let mut randomness = [Scalar::ZERO; BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            randomness[i] = Scalar::from(i as u64 + 1);
+        }
+        let proof = prove_new_balance_range(balance, &randomness);
+        
+        // But create commitments for a different balance
+        let wrong_balance = 54321u128;
+        let chunks = chunk_u128(wrong_balance);
+        let mut encrypted_chunks = [crate::confidential_balance::EncryptedChunk {
+            amount: RistrettoPoint::identity(),
+            handle: RistrettoPoint::identity(),
+        }; BALANCE_CHUNKS];
+        
+        let pc_gens = PedersenGens::default();
+        for i in 0..BALANCE_CHUNKS {
+            let chunk_scalar = new_scalar_from_u64(chunks[i]);
+            let commitment = pc_gens.commit(chunk_scalar, randomness[i]).compress().decompress().unwrap();
+            encrypted_chunks[i].amount = commitment;
+        }
+        
+        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+        
+        // Verification should fail
+        let result = verify_new_balance_range_proof(&confidential_balance, &proof);
+        assert!(result.is_err(), "Proof verification should have failed");
+    }
+    
+    #[test]
+    fn test_verify_with_invalid_proof_bytes_fails() {
+        // Create a valid balance
+        let balance = 12345u128;
+        let chunks = chunk_u128(balance);
+        let mut encrypted_chunks = [crate::confidential_balance::EncryptedChunk {
+            amount: RistrettoPoint::identity(),
+            handle: RistrettoPoint::identity(),
+        }; BALANCE_CHUNKS];
+        
+        for i in 0..BALANCE_CHUNKS {
+            let chunk_scalar = new_scalar_from_u64(chunks[i]);
+            encrypted_chunks[i].amount = basepoint_mul(&chunk_scalar);
+        }
+        
+        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+        
+        // Create invalid proof bytes
+        let invalid_proof = RangeProofBytes(Bytes::from_slice(&Env::default(), &[0u8; 100]));
+        
+        // Verification should fail
+        let result = verify_new_balance_range_proof(&confidential_balance, &invalid_proof);
+        assert!(result.is_err(), "Proof verification should have failed");
+    }
 }

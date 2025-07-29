@@ -55,8 +55,8 @@ pub struct ConfidentialAmountBytes(pub SorobanVec<EncryptedChunkBytes>); // 4 ch
 
 #[derive(Debug, Clone, Copy)]
 pub struct EncryptedChunk {
-    amount: RistrettoPoint, // C
-    handle: RistrettoPoint, // D
+    pub amount: RistrettoPoint, // C
+    pub handle: RistrettoPoint, // D
 }
 
 impl EncryptedChunk {
