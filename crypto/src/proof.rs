@@ -32,7 +32,7 @@ pub enum Error {
 pub struct ScalarBytes(pub BytesN<32>);
 
 #[derive(Debug, Clone)]
-pub struct RangeProofBytes(Bytes);
+pub struct RangeProofBytes(pub Bytes);
 
 #[derive(Debug, Clone)]
 pub struct CompressedPubkeyBytes(BytesN<32>);

@@ -17,6 +17,7 @@ soroban-sdk = { workspace = true }
 solana-zk-sdk = {workspace = true}
 sha2 = {workspace = true}
 bulletproofs = {workspace = true}
+merlin = {workspace = true}
 
 [dev-dependencies]
 rand = "0.8"
