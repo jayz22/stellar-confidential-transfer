@@ -35,7 +35,7 @@ impl ConfidentialBalanceBytes {
     pub fn to_bytes(&self) -> [u8; 2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BITS]{
         assert_eq!(self.0.len() as usize, BALANCE_CHUNKS);
         let mut bytes = [0u8; 512];
-        let mut i = 0;        
+        let mut i = 0;
         for chunk in self.0.iter() {
             bytes[i..i+32].copy_from_slice(&chunk.amount.0.to_array());
             bytes[i+32..i+64].copy_from_slice(&chunk.handle.0.to_array());
@@ -66,6 +66,8 @@ impl ConfidentialAmountBytes {
 
 #[derive(Debug, Clone, Copy)]
 pub struct EncryptedChunk {
+    pub amount: RistrettoPoint, // C
+    pub handle: RistrettoPoint, // D
     pub amount: RistrettoPoint, // C
     pub handle: RistrettoPoint, // D
 }
@@ -148,7 +150,7 @@ impl ConfidentialAmount {
     }
 
     // this just compare chunk by chunk, that each pair of chunks are the same value
-    // it does *not* account for normalization semantics.  
+    // it does *not* account for normalization semantics.
     pub fn encrypted_amounts_are_equal(lhs: &Self, rhs: &Self) -> bool {
         for i in 0..AMOUNT_CHUNKS {
             if lhs.0[i].amount != rhs.0[i].amount {
@@ -274,26 +276,6 @@ pub mod testutils {
         }
         wrong_balance.to_env_bytes(correct_balance.0.env())
     }
-}
-
-
-
-// range proof
-
-pub fn prove_new_balance_range(e: &Env, _new_balance: u128, _randomness: &[Scalar; BALANCE_CHUNKS]) -> RangeProofBytes {
-    RangeProofBytes(Bytes::new(e))
-}
-
-pub fn prove_transfer_amount_range(_new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {
-    todo!()
-}
-
-pub fn verify_new_balance_range_proof(_new_balance: &ConfidentialBalance, _proof: &RangeProofBytes) {
-    todo!()
-}
-
-pub fn verify_transfer_amount_range_proof(_new_amount: &ConfidentialAmount, _proof: &RangeProofBytes) {
-    todo!()
 }
 
 #[cfg(test)]
