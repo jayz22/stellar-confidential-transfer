@@ -112,24 +112,24 @@ pub fn verify_new_balance_range_proof(
     // Create the same bulletproof generators used in proving
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, BALANCE_CHUNKS);
-    
+
     // Create transcript with the same domain separation
     let mut transcript = Transcript::new(BULLETPROOFS_DST);
-    
+
     // Extract Pedersen commitments from the confidential balance
     let balance_points = new_balance.get_encrypted_balances();
-    
+
     // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
     let commitments: Vec<CompressedRistretto> = balance_points
         .iter()
         .map(|point| point.compress())
         .collect();
-    
+
     // Deserialize the proof
     let proof_bytes: Vec<u8> = proof.0.iter().collect();
-    let range_proof = RangeProof::from_bytes(&proof_bytes)
-        .map_err(|_| "Failed to deserialize range proof")?;
-    
+    let range_proof =
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| "Failed to deserialize range proof")?;
+
     // Verify the range proof
     range_proof
         .verify_multiple(
@@ -152,51 +152,52 @@ pub fn verify_transfer_amount_range_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_prove_and_verify_new_balance_range() {
         // Test with a valid 128-bit balance
         let balance = 0x123456789ABCDEFu128;
-        
+
         // Use zero randomness for the proof
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        
+
         // Create the range proof
         let proof = prove_new_balance_range(balance, &randomness);
-        
+
         // Create a confidential balance using new_balance_with_no_randomness
         let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
-        
+
         // Verify the proof
         let result = verify_new_balance_range_proof(&confidential_balance, &proof);
         assert!(result.is_ok(), "Proof verification failed: {:?}", result);
     }
-    
+
     #[test]
     fn test_verify_with_wrong_balance_fails() {
         // Create a proof for one balance
         let balance = 12345u128;
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
         let proof = prove_new_balance_range(balance, &randomness);
-        
+
         // But create commitments for a different balance
         let wrong_balance = 54321u128;
-        let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(wrong_balance);
-        
+        let confidential_balance =
+            ConfidentialBalance::new_balance_with_no_randomness(wrong_balance);
+
         // Verification should fail
         let result = verify_new_balance_range_proof(&confidential_balance, &proof);
         assert!(result.is_err(), "Proof verification should have failed");
     }
-    
+
     #[test]
     fn test_verify_with_invalid_proof_bytes_fails() {
         // Create a valid balance
         let balance = 12345u128;
         let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
-        
+
         // Create invalid proof bytes
         let invalid_proof = RangeProofBytes(Bytes::from_slice(&Env::default(), &[0u8; 100]));
-        
+
         // Verification should fail
         let result = verify_new_balance_range_proof(&confidential_balance, &invalid_proof);
         assert!(result.is_err(), "Proof verification should have failed");
