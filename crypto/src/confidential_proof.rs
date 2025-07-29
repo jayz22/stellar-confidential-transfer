@@ -152,41 +152,20 @@ pub fn verify_transfer_amount_range_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arith::{basepoint_mul, new_scalar_from_u64};
-    use curve25519_dalek::traits::Identity;
-    use curve25519_dalek::RistrettoPoint;
     
     #[test]
     fn test_prove_and_verify_new_balance_range() {
         // Test with a valid 128-bit balance
         let balance = 0x123456789ABCDEFu128;
         
-        // Generate random scalars for the proof
-        let mut randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        for i in 0..BALANCE_CHUNKS {
-            randomness[i] = Scalar::from(i as u64 + 1); // Simple non-zero scalars for testing
-        }
+        // Use zero randomness for the proof
+        let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
         
         // Create the range proof
         let proof = prove_new_balance_range(balance, &randomness);
         
-        // Create a confidential balance with the same chunks and randomness
-        // This simulates having encrypted chunks where the commitments match the proof
-        let chunks = chunk_u128(balance);
-        let mut encrypted_chunks = [crate::confidential_balance::EncryptedChunk {
-            amount: RistrettoPoint::identity(),
-            handle: RistrettoPoint::identity(),
-        }; BALANCE_CHUNKS];
-        
-        // Create Pedersen commitments for each chunk using the same generators as the proof
-        let pc_gens = PedersenGens::default();
-        for i in 0..BALANCE_CHUNKS {
-            let chunk_scalar = new_scalar_from_u64(chunks[i]);
-            let commitment = pc_gens.commit(chunk_scalar, randomness[i]).compress().decompress().unwrap();
-            encrypted_chunks[i].amount = commitment;
-        }
-        
-        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+        // Create a confidential balance using new_balance_with_no_randomness
+        let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
         
         // Verify the proof
         let result = verify_new_balance_range_proof(&confidential_balance, &proof);
@@ -197,28 +176,12 @@ mod tests {
     fn test_verify_with_wrong_balance_fails() {
         // Create a proof for one balance
         let balance = 12345u128;
-        let mut randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        for i in 0..BALANCE_CHUNKS {
-            randomness[i] = Scalar::from(i as u64 + 1);
-        }
+        let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
         let proof = prove_new_balance_range(balance, &randomness);
         
         // But create commitments for a different balance
         let wrong_balance = 54321u128;
-        let chunks = chunk_u128(wrong_balance);
-        let mut encrypted_chunks = [crate::confidential_balance::EncryptedChunk {
-            amount: RistrettoPoint::identity(),
-            handle: RistrettoPoint::identity(),
-        }; BALANCE_CHUNKS];
-        
-        let pc_gens = PedersenGens::default();
-        for i in 0..BALANCE_CHUNKS {
-            let chunk_scalar = new_scalar_from_u64(chunks[i]);
-            let commitment = pc_gens.commit(chunk_scalar, randomness[i]).compress().decompress().unwrap();
-            encrypted_chunks[i].amount = commitment;
-        }
-        
-        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+        let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(wrong_balance);
         
         // Verification should fail
         let result = verify_new_balance_range_proof(&confidential_balance, &proof);
@@ -229,18 +192,7 @@ mod tests {
     fn test_verify_with_invalid_proof_bytes_fails() {
         // Create a valid balance
         let balance = 12345u128;
-        let chunks = chunk_u128(balance);
-        let mut encrypted_chunks = [crate::confidential_balance::EncryptedChunk {
-            amount: RistrettoPoint::identity(),
-            handle: RistrettoPoint::identity(),
-        }; BALANCE_CHUNKS];
-        
-        for i in 0..BALANCE_CHUNKS {
-            let chunk_scalar = new_scalar_from_u64(chunks[i]);
-            encrypted_chunks[i].amount = basepoint_mul(&chunk_scalar);
-        }
-        
-        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+        let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
         
         // Create invalid proof bytes
         let invalid_proof = RangeProofBytes(Bytes::from_slice(&Env::default(), &[0u8; 100]));
