@@ -28,24 +28,25 @@ pub struct EncryptedChunkBytes {
     handle: CompressedRistrettoBytes, // D
 }
 
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct ConfidentialBalanceBytes(pub SorobanVec<EncryptedChunkBytes>); // 8 chunks
+//TODO: Uncomment
+// #[contracttype]
+// #[derive(Debug, Clone)]
+// pub struct ConfidentialBalanceBytes(pub SorobanVec<EncryptedChunkBytes>); // 8 chunks
 
-impl ConfidentialBalanceBytes {
-    pub fn to_bytes(&self) -> [u8; 512]{
-        assert_eq!(self.0.len(), 8);
-        let mut bytes = [0u8; 512];
-        let mut i = 0;        
-        for chunk in self.0.iter() {
-            bytes[i..i+32].copy_from_slice(&chunk.amount.0.to_array());
-            bytes[i+32..i+64].copy_from_slice(&chunk.handle.0.to_array());
-            i+=64;
-        }
-        debug_assert!(i == 512);
-        bytes
-    }
-}
+// impl ConfidentialBalanceBytes {
+//     pub fn to_bytes(&self) -> [u8; 512]{
+//         assert_eq!(self.0.len(), 8);
+//         let mut bytes = [0u8; 512];
+//         let mut i = 0;
+//         for chunk in self.0.iter() {
+//             bytes[i..i+32].copy_from_slice(&chunk.amount.0.to_array());
+//             bytes[i+32..i+64].copy_from_slice(&chunk.handle.0.to_array());
+//             i+=64;
+//         }
+//         debug_assert!(i == 512);
+//         bytes
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub struct ConfidentialAmountBytes(pub SorobanVec<EncryptedChunkBytes>); // 4 chunks
@@ -122,14 +123,14 @@ impl ConfidentialBalance {
         ConfidentialBalance(encrypted_chunks)
     }
 
-    pub fn from_env_bytes(bytes: &ConfidentialBalanceBytes) -> Self {
-        assert_eq!(bytes.0.len() as usize, BALANCE_CHUNKS);
-        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
-        for i in 0..BALANCE_CHUNKS {
-            encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
-        }
-        ConfidentialBalance(encrypted_chunks)
-    }
+    // pub fn from_env_bytes(bytes: &ConfidentialBalanceBytes) -> Self {
+    //     assert_eq!(bytes.0.len() as usize, BALANCE_CHUNKS);
+    //     let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
+    //     for i in 0..BALANCE_CHUNKS {
+    //         encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
+    //     }
+    //     ConfidentialBalance(encrypted_chunks)
+    // }
 
     pub fn get_encrypted_balances(&self) -> [RistrettoPoint; BALANCE_CHUNKS] {
         let mut balances = [RistrettoPoint::default(); BALANCE_CHUNKS];
@@ -183,27 +184,27 @@ pub fn split_into_chunks_u128(balance: u128) -> [Scalar; BALANCE_CHUNKS] {
 
 pub fn prove_new_balance_range(new_balance: u128, randomness: &std::vec::Vec<Scalar>) -> RangeProofBytes {
     assert_eq!(randomness.len(), BALANCE_CHUNKS, "Need randomness for each chunk");
-    
+
     // Create bulletproof generators
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(128, BALANCE_CHUNKS); // 128 generators for 8 parties (chunks)
-    
+
     // Create transcript with domain separation
     let mut transcript = Transcript::new(b"StellarConfidentialToken/BulletproofRangeProof");
-    
+
     // Split balance into chunks (already done by caller via split_into_chunks_u128)
     let chunks = split_into_chunks_u128(new_balance);
-    
+
     // Convert chunks to u64 values for bulletproofs API
     let mut values = std::vec![];
     for chunk in &chunks {
         // Extract the low 64 bits (chunks are guaranteed to be 16-bit values)
         values.push(chunk.to_bytes()[0] as u64 | ((chunk.to_bytes()[1] as u64) << 8));
     }
-    
+
     // Convert randomness scalars to bulletproofs format
     let blindings: std::vec::Vec<Scalar> = randomness.iter().cloned().collect();
-    
+
     // Create the batched range proof for all 8 chunks, each proving value is in [0, 2^16)
     let (proof, _commitments) = RangeProof::prove_multiple(
         &bp_gens,
@@ -213,7 +214,7 @@ pub fn prove_new_balance_range(new_balance: u128, randomness: &std::vec::Vec<Sca
         &blindings,
         CHUNK_SIZE_BITS as usize,
     ).expect("Failed to create range proof");
-    
+
     // Serialize the proof
     let proof_bytes = proof.to_bytes();
     RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes))
@@ -221,27 +222,27 @@ pub fn prove_new_balance_range(new_balance: u128, randomness: &std::vec::Vec<Sca
 
 pub fn prove_transfer_amount_range(new_amount: u64, randomness: &std::vec::Vec<Scalar>) -> RangeProofBytes {
     assert_eq!(randomness.len(), AMOUNT_CHUNKS, "Need randomness for each chunk");
-    
+
     // Create bulletproof generators
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(64, AMOUNT_CHUNKS); // 64 generators for 4 parties (chunks)
-    
+
     // Create transcript with domain separation
     let mut transcript = Transcript::new(b"StellarConfidentialToken/BulletproofRangeProof");
-    
+
     // Split amount into chunks
     let chunks = split_into_chunks_u64(new_amount);
-    
+
     // Convert chunks to u64 values for bulletproofs API
     let mut values = std::vec![];
     for chunk in &chunks {
         // Extract the low 64 bits (chunks are guaranteed to be 16-bit values)
         values.push(chunk.to_bytes()[0] as u64 | ((chunk.to_bytes()[1] as u64) << 8));
     }
-    
+
     // Convert randomness scalars to bulletproofs format
     let blindings: std::vec::Vec<Scalar> = randomness.iter().cloned().collect();
-    
+
     // Create the batched range proof for all 4 chunks, each proving value is in [0, 2^16)
     let (proof, _commitments) = RangeProof::prove_multiple(
         &bp_gens,
@@ -251,7 +252,7 @@ pub fn prove_transfer_amount_range(new_amount: u64, randomness: &std::vec::Vec<S
         &blindings,
         CHUNK_SIZE_BITS as usize,
     ).expect("Failed to create range proof");
-    
+
     // Serialize the proof
     let proof_bytes = proof.to_bytes();
     RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes))
