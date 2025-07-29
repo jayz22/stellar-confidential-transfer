@@ -71,14 +71,14 @@ impl EncryptedChunk {
         }
     }
 
-    pub fn to_bytes_obj(&self, e: &Env) -> EncryptedChunkBytes {
+    pub fn to_env_bytes(&self, e: &Env) -> EncryptedChunkBytes {
         EncryptedChunkBytes {
             amount: CompressedRistrettoBytes(BytesN::<32>::from_array(e, &arith::point_to_bytes(&self.amount))),
             handle: CompressedRistrettoBytes(BytesN::<32>::from_array(e, &arith::point_to_bytes(&self.handle))),
         }
     }
 
-    pub fn from_bytes_obj(bytes: &EncryptedChunkBytes) -> Self {
+    pub fn from_env_bytes(bytes: &EncryptedChunkBytes) -> Self {
         let amount = arith::bytes_to_point(&bytes.amount.0.to_array());
         let handle = arith::bytes_to_point(&bytes.handle.0.to_array());
         EncryptedChunk { amount, handle }
@@ -100,11 +100,11 @@ impl ConfidentialAmount {
         ConfidentialAmount(encrypted_chunks)
     }
 
-    pub fn from_bytes_obj(bytes: &ConfidentialAmountBytes) -> Self {
+    pub fn from_env_bytes(bytes: &ConfidentialAmountBytes) -> Self {
         assert_eq!(bytes.0.len() as usize, AMOUNT_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
         for i in 0..AMOUNT_CHUNKS {
-            encrypted_chunks[i] = EncryptedChunk::from_bytes_obj(&bytes.0.get(i as u32).unwrap());
+            encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
         }
         ConfidentialAmount(encrypted_chunks)        
     }
@@ -120,11 +120,11 @@ impl ConfidentialBalance {
         ConfidentialBalance(encrypted_chunks)
     }
 
-    pub fn from_bytes_obj(bytes: &ConfidentialBalanceBytes) -> Self {
+    pub fn from_env_bytes(bytes: &ConfidentialBalanceBytes) -> Self {
         assert_eq!(bytes.0.len() as usize, BALANCE_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
         for i in 0..BALANCE_CHUNKS {
-            encrypted_chunks[i] = EncryptedChunk::from_bytes_obj(&bytes.0.get(i as u32).unwrap());
+            encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
         }
         ConfidentialBalance(encrypted_chunks)
     }

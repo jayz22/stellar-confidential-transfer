@@ -703,8 +703,8 @@ fn verify_withdrawal_sigma_proof(
 
     let ek = ek.to_point();
     let amount = new_scalar_from_u64(amount);
-    let current_balance = ConfidentialBalance::from_bytes_obj(current_balance);
-    let new_balance = ConfidentialBalance::from_bytes_obj(new_balance);
+    let current_balance = ConfidentialBalance::from_env_bytes(current_balance);
+    let new_balance = ConfidentialBalance::from_env_bytes(new_balance);
     let alphas = WithdrawalSigmaProofAlphas::from_bytes(&proof.alphas)?;
     let xs = WithdrawalSigmaProofXs::from_bytes(&proof.xs)?;
 
