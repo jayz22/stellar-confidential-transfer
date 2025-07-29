@@ -111,6 +111,14 @@ impl ConfidentialAmount {
         }
         ConfidentialAmount(encrypted_chunks)        
     }
+    
+    pub fn get_encrypted_amounts(&self) -> [RistrettoPoint; AMOUNT_CHUNKS] {
+        let mut amounts = [RistrettoPoint::default(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            amounts[i] = self.0[i].amount;
+        }
+        amounts
+    }
 }
 
 impl ConfidentialBalance {
