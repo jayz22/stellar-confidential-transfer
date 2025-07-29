@@ -132,6 +132,27 @@ pub fn new_scalar_from_sha2_512(bytes: &Vec<u8>) -> Scalar {
     Scalar::hash_from_bytes::<Sha512>(bytes)
 }
 
+/// Raises 2 to the power of the provided exponent and returns the result as a scalar.
+pub fn new_scalar_from_pow2(exp: u8) -> Scalar {
+    new_scalar_from_u128(1 << exp)
+}
+
+
+/// Calculates the linear combination of the provided scalars.
+/// Computes the sum of element-wise products: sum(lhs[i] * rhs[i]) for all i.
+pub fn scalar_linear_combination(lhs: &[Scalar], rhs: &[Scalar]) -> Scalar {
+    assert_eq!(lhs.len(), rhs.len(), "Vectors must have the same length");
+    
+    let mut result = Scalar::from(0u64);
+    
+    for (l, r) in lhs.iter().zip(rhs.iter()) {
+        let product = scalar_mul(l, r);
+        scalar_add_assign(&mut result, &product);
+    }
+    
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

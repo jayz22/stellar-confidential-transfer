@@ -7,8 +7,8 @@ use soroban_sdk::{
 use crate::utils::*;
 use stellar_confidential_crypto::{
     proof::{
-        verify_withdrawal_proof, CompressedPubkey, ConfidentialAmount, ConfidentialBalance,
-        NormalizationProof, TransferProof, WithdrawalProof,
+        verify_withdrawal_proof, CompressedPubkeyBytes, ConfidentialAmount, ConfidentialBalance,
+        NormalizationProofBytes, TransferProofBytes, WithdrawalProofBytes,
     },
     ConfidentialAmount,
 };
@@ -21,14 +21,14 @@ pub struct ConfidentialToken;
 #[contracttype]
 pub struct TokenConfidentialExt {
     pub enabled_flag: bool, // enable/disable this token's confidential functionalities, controlled by the admin
-    pub auditors: Vec<CompressedPubkey>,
+    pub auditors: Vec<CompressedPubkeyBytes>,
     pub total_confidential_supply: u128,
 }
 
 #[contracttype]
 pub struct AccountConfidentialExt {
     pub enabled_flag: bool, // enable/disable this account's confidential functionalities, controlled by the admin
-    pub encryption_key: CompressedPubkey,
+    pub encryption_key: CompressedPubkeyBytes,
     pub available_balance: ConfidentialBalance,
     pub pending_balance: ConfidentialAmount,
     pub pending_counter: u32,
@@ -38,12 +38,12 @@ pub struct AccountConfidentialExt {
 #[contractimpl]
 impl ConfidentialToken {
     // Register this token for the confidential extention
-    pub fn register_confidential_token(e: &Env, auditor_keys: Vec<CompressedPubkey>) {
+    pub fn register_confidential_token(e: &Env, auditor_keys: Vec<CompressedPubkeyBytes>) {
         read_administrator(e).require_auth();
         init_token_confidential_ext(e, auditor_keys);
     }
 
-    pub fn register_account(e: &Env, acc: Address, ek: CompressedPubkey) {
+    pub fn register_account(e: &Env, acc: Address, ek: CompressedPubkeyBytes) {
         read_administrator(e).require_auth();
         init_acc_confidential_ext(e, acc, ek);
     }
@@ -109,7 +109,7 @@ impl ConfidentialToken {
         acc: Address,
         amt: u64,
         new_balance: ConfidentialBalance,
-        proof: WithdrawalProof,
+        proof: WithdrawalProofBytes,
     ) {
         // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
         let mut token_ext = read_token_confidential_ext(e);
@@ -165,10 +165,10 @@ impl ConfidentialToken {
         des: Address,
         amt_src: ConfidentialAmount,
         amt_des: ConfidentialAmount,
-        auditor_keys: Vec<CompressedPubkey>,
+        auditor_keys: Vec<CompressedPubkeyBytes>,
         amt_auditors: Vec<ConfidentialAmount>,
         src_new_balance: ConfidentialBalance,
-        proof: TransferProof,
+        proof: TransferProofBytes,
     ) {
         todo!()
     }
@@ -185,7 +185,7 @@ impl ConfidentialToken {
         e: &Env,
         src: Address,
         src_new_balance: ConfidentialBalance,
-        proof: NormalizationProof,
+        proof: NormalizationProofBytes,
     ) {
         todo!()
     }

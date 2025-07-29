@@ -2,7 +2,7 @@ use soroban_sdk::{contracttype, Address, BytesN, Env};
 
 use crate::contract::{AccountConfidentialExt, TokenConfidentialExt};
 use stellar_confidential_crypto::proof::{
-    CompressedPubkey, CompressedRistretto, ConfidentialAmount, ConfidentialBalance, EncryptedChunk,
+    CompressedPubkeyBytes, CompressedRistretto, ConfidentialAmount, ConfidentialBalance, EncryptedChunk,
 };
 
 pub(crate) const DAY_IN_LEDGERS: u32 = 17280;
@@ -180,7 +180,7 @@ pub fn check_nonnegative_amount(amount: i128) {
 }
 
 // confidential ext
-pub fn init_token_confidential_ext(e: &Env, auditor_keys: Vec<CompressedPubkey>) {
+pub fn init_token_confidential_ext(e: &Env, auditor_keys: Vec<CompressedPubkeyBytes>) {
     let key = DataKey::TokenConfidentialExt;
     if e.storage().instance().has(&key) {
         panic!("confidential token extention already initialized")
@@ -193,7 +193,7 @@ pub fn init_token_confidential_ext(e: &Env, auditor_keys: Vec<CompressedPubkey>)
     e.storage().instance().set(&key, &ext);
 }
 
-pub fn init_acc_confidential_ext(e: &Env, acc: Address, ek: CompressedPubkey) {
+pub fn init_acc_confidential_ext(e: &Env, acc: Address, ek: CompressedPubkeyBytes) {
     let key = DataKey::AccountConfidentialExt(acc);
     if e.storage().persistent().has(&key) {
         panic!("account confidential extension already initialized")
