@@ -69,13 +69,13 @@ pub enum Error {
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofXs {
     // proves the relation: Σ C_i * 2^{16i} = Σ b_i 2^{16i}G + Σ sk 2^{16i} D_i
-    pub x1: CompressedRistretto,
+    pub x1: CompressedRistrettoBytes,
     // proves the key-pair relation: P = sk^-1 * H
-    pub x2: CompressedRistretto,
+    pub x2: CompressedRistrettoBytes,
     // proves the relation that the encrypted C value for every chunk is correct, C_i = m_i*G + r_i*H
-    pub x3s: Vec<CompressedRistretto>,
+    pub x3s: Vec<CompressedRistrettoBytes>,
     // proves the decrption handle for each chunk is correct, D_i = r_i*P
-    pub x4s: Vec<CompressedRistretto>,
+    pub x4s: Vec<CompressedRistrettoBytes>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,13 +94,13 @@ pub struct NormalizationSigmaProof {
 
 #[derive(Debug, Clone)]
 pub struct WithdrawalSigmaProofXs {
-    pub x1: CompressedRistretto,
+    pub x1: CompressedRistrettoBytes,
     // proves the key-pair relation: P = sk^-1 * H
-    pub x2: CompressedRistretto,
+    pub x2: CompressedRistrettoBytes,
     // proves the relation that the encrypted C value for every chunk is correct, C_i = m_i*G + r_i*H
-    pub x3s: Vec<CompressedRistretto>,
+    pub x3s: Vec<CompressedRistrettoBytes>,
     // proves the decrption handle for each chunk is correct, D_i = r_i*P
-    pub x4s: Vec<CompressedRistretto>,
+    pub x4s: Vec<CompressedRistrettoBytes>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,28 +125,28 @@ pub struct WithdrawalSigmaProof {
 pub struct TransferSigmaProofXs {
     // Balance preservation commitment
     // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
-    pub x1: CompressedRistretto,
+    pub x1: CompressedRistrettoBytes,
     // Sender decryption handles for new balance (8 chunks)
     // X₂ᵢ = κ₆ᵢ·sender_ek
-    pub x2s: Vec<CompressedRistretto>,
+    pub x2s: Vec<CompressedRistrettoBytes>,
     // Recipient decryption handles for transfer amount (4 chunks)
     // X₃ᵢ = κ₃ᵢ·recipient_ek
-    pub x3s: Vec<CompressedRistretto>,
+    pub x3s: Vec<CompressedRistrettoBytes>,
     // Transfer amount encryption correctness (4 chunks)
     // X₄ᵢ = κ₄ᵢ·G + κ₃ᵢ·H
-    pub x4s: Vec<CompressedRistretto>,
+    pub x4s: Vec<CompressedRistrettoBytes>,
     // Sender key-pair relationship: P = (sk)^-1 * H
     // X₅ = κ₅·H
-    pub x5: CompressedRistretto,
+    pub x5: CompressedRistrettoBytes,
     // New balance encryption correctness (8 chunks)
     // X₆ᵢ = κ₁ᵢ·G + κ₆ᵢ·H
-    pub x6s: Vec<CompressedRistretto>,
+    pub x6s: Vec<CompressedRistrettoBytes>,
     // Auditor decryption handles for transfer amount (auditors × 4 chunks)
     // X₇ⱼᵢ = κ₃ᵢ·auditor_ekⱼ
-    pub x7s: Vec<Vec<CompressedRistretto>>,
+    pub x7s: Vec<Vec<CompressedRistrettoBytes>>,
     // Sender decryption handles for sender amount (4 chunks)
     // X₈ᵢ = κ₃ᵢ·sender_ek
-    pub x8s: Vec<CompressedRistretto>,
+    pub x8s: Vec<CompressedRistrettoBytes>,
 }
 
 #[derive(Debug, Clone)]
