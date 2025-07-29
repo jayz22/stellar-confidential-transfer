@@ -69,6 +69,11 @@ pub fn basepoint() -> RistrettoPoint {
     constants::RISTRETTO_BASEPOINT_POINT
 }
 
+/// Multiply the base point by a scalar.
+pub fn basepoint_mul(scalar: &Scalar) -> RistrettoPoint {
+    scalar * constants::RISTRETTO_BASEPOINT_TABLE
+}
+
 /// Returns the hash-to-point result of serializing the basepoint of the
 /// Ristretto255 group.
 pub fn hash_to_point_base() -> RistrettoPoint {
@@ -102,8 +107,9 @@ pub fn point_to_bytes(point: &RistrettoPoint) -> [u8; 32] {
 }
 
 /// Convert bytes to a point.
-pub fn bytes_to_point(bytes: &[u8; 32]) -> RistrettoPoint {
+pub fn bytes_to_point(bytes: &[u8]) -> RistrettoPoint {
     // TODO(Brett): Error handling for invalid bytes
+    assert!(bytes.len() == 32, "Bytes must be 32 bytes long");
     point_decompress(&CompressedRistretto::from_slice(bytes).expect("Invalid compressed point"))
 }
 
@@ -146,6 +152,52 @@ mod tests {
             expected,
             "Got different point than expected"
         );
+    }
+
+    #[test]
+    fn test_basepoint_mul() {
+        // Test multiplication by zero
+        let zero = Scalar::from(0u64);
+        let result = basepoint_mul(&zero);
+        assert_eq!(result, RistrettoPoint::identity());
+
+        // Test multiplication by one
+        let one = Scalar::from(1u64);
+        let result = basepoint_mul(&one);
+        assert_eq!(result, basepoint());
+
+        // Test multiplication by small scalar
+        let scalar = Scalar::from(5u64);
+        let result = basepoint_mul(&scalar);
+        let expected = &basepoint() + &basepoint() + &basepoint() + &basepoint() + &basepoint();
+        assert_eq!(result, expected);
+
+        // Test that basepoint_mul is consistent with point_mul
+        let scalar = Scalar::from(42u64);
+        let result_basepoint_mul = basepoint_mul(&scalar);
+        let result_point_mul = point_mul(&basepoint(), &scalar);
+        assert_eq!(result_basepoint_mul, result_point_mul);
+
+        // Test with large scalar
+        let large_scalar = Scalar::from(0x1234567890abcdefu64);
+        let result = basepoint_mul(&large_scalar);
+        let expected = point_mul(&basepoint(), &large_scalar);
+        assert_eq!(result, expected);
+
+        // Test that different scalars produce different points
+        let scalar1 = Scalar::from(7u64);
+        let scalar2 = Scalar::from(11u64);
+        let result1 = basepoint_mul(&scalar1);
+        let result2 = basepoint_mul(&scalar2);
+        assert_ne!(result1, result2);
+
+        // Test distributivity: basepoint_mul(a + b) = basepoint_mul(a) + basepoint_mul(b)
+        let a = Scalar::from(13u64);
+        let b = Scalar::from(17u64);
+        let sum = scalar_add(&a, &b);
+        let result_sum = basepoint_mul(&sum);
+        let result_separate = &basepoint_mul(&a) + &basepoint_mul(&b);
+        assert_eq!(result_sum, result_separate);
     }
 
     #[test]
