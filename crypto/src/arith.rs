@@ -50,6 +50,10 @@ pub fn scalar_mul_assign(a: &mut Scalar, b: &Scalar) {
     *a *= b;
 }
 
+pub fn scalar_invert(a: &Scalar) -> Scalar {
+    a.invert()
+}
+
 /// Convert a scalar to bytes.
 pub fn scalar_to_bytes(scalar: &Scalar) -> [u8; 32] {
     scalar.to_bytes()
@@ -152,6 +156,12 @@ pub fn scalar_linear_combination(lhs: &[Scalar], rhs: &[Scalar]) -> Scalar {
     
     result
 }
+
+pub fn pubkey_from_secret_key(sk: &Scalar) -> RistrettoPoint {
+    let sk_invert = scalar_invert(sk);
+    point_mul(&hash_to_point_base(), &sk_invert)
+}
+
 
 #[cfg(test)]
 mod tests {

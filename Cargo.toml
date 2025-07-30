@@ -13,6 +13,9 @@ solana-zk-sdk = "2.3.1"
 sha2 = "0.10.9"
 bulletproofs = "5.0.0"
 
+[workspace.dev-dependencies]
+rand = "0.8.5"
+
 [profile.release]
 opt-level = "z"
 overflow-checks = true

@@ -3,7 +3,7 @@ use crate::{arith::new_scalar_from_u64 , RangeProofBytes};
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
-use soroban_sdk::{contracttype, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
@@ -48,8 +48,6 @@ impl ConfidentialBalanceBytes {
 #[derive(Debug, Clone)]
 pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
 
-
-
 #[derive(Debug, Clone, Copy)]
 pub struct EncryptedChunk {
     amount: RistrettoPoint, // C
@@ -69,6 +67,14 @@ impl EncryptedChunk {
             amount: arith::basepoint_mul(val),
             handle: RistrettoPoint::identity(),
         }
+    }
+
+    #[cfg(test)]
+    pub fn new(val: &Scalar, randomness: &Scalar, ek: &RistrettoPoint) -> Self {
+        EncryptedChunk {
+            amount: arith::basepoint_mul(val) + arith::point_mul(&arith::hash_to_point_base(), randomness), // C = vG + rH
+            handle: arith::point_mul(ek, randomness) , // D = r*P
+        }        
     }
 
     pub fn to_env_bytes(&self, e: &Env) -> EncryptedChunkBytes {
@@ -120,6 +126,20 @@ impl ConfidentialBalance {
         ConfidentialBalance(encrypted_chunks)
     }
 
+    #[cfg(test)]
+    pub fn new_balance_from_u128(
+        balance: u128,
+        randomness: &[Scalar; BALANCE_CHUNKS],
+        ek: &RistrettoPoint,
+    ) -> ConfidentialBalance {
+        let balance_chunks = split_into_chunks_u128(balance);
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            encrypted_chunks[i] = EncryptedChunk::new(&balance_chunks[i], &randomness[i], ek);
+        }
+        ConfidentialBalance(encrypted_chunks)
+    }
+
     pub fn from_env_bytes(bytes: &ConfidentialBalanceBytes) -> Self {
         assert_eq!(bytes.0.len() as usize, BALANCE_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
@@ -127,6 +147,14 @@ impl ConfidentialBalance {
             encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
         }
         ConfidentialBalance(encrypted_chunks)
+    }
+
+    pub fn to_env_bytes(&self, e: &Env) -> ConfidentialBalanceBytes {
+        let mut chunks = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            chunks.push_back(self.0[i].to_env_bytes(e));
+        }
+        ConfidentialBalanceBytes(chunks)
     }
 
     pub fn get_encrypted_balances(&self) -> [RistrettoPoint; BALANCE_CHUNKS] {
@@ -179,11 +207,29 @@ pub fn split_into_chunks_u128(balance: u128) -> [Scalar; BALANCE_CHUNKS] {
     res
 }
 
-pub fn prove_new_balance_range(_new_balance: u128, _randomness: &Vec<Scalar>) -> RangeProofBytes {
+#[cfg(test)]
+pub mod testutils {
+    use super::*;
+    use rand::rngs::OsRng;
+
+    pub fn generate_balance_randomness() -> [Scalar; BALANCE_CHUNKS] {
+        let mut res = [Scalar::ZERO; BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            res[i] = Scalar::random(&mut OsRng)
+        }
+        res
+    }
+}
+
+
+
+// range proof
+
+pub fn prove_new_balance_range(_new_balance: u128, _randomness: &[Scalar; BALANCE_CHUNKS]) -> RangeProofBytes {
     todo!()
 }
 
-pub fn prove_transfer_amount_range(_new_amount: u64, _randomness: &Vec<Scalar>) -> RangeProofBytes {
+pub fn prove_transfer_amount_range(_new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {
     todo!()
 }
 
