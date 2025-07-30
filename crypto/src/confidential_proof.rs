@@ -231,6 +231,17 @@ mod tests {
             "Proof verification failed: {:?}",
             verify_result
         );
+
+        // Verify that the commitments from the proof match those from the confidential balance
+        let expected_commitments: Vec<CompressedRistretto> = confidential_balance
+            .get_encrypted_balances()
+            .iter()
+            .map(|point| point.compress())
+            .collect();
+        assert_eq!(
+            result.commitments, expected_commitments,
+            "Commitments from proof do not match expected commitments"
+        );
     }
 
     #[test]
