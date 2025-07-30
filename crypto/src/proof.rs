@@ -787,7 +787,7 @@ fn verify_new_balance_sigma_proof(
         let rhs = alphas.a1s[i] * &basepoint() + alphas.a4s[i] * &hash_to_point_base() + rho * new_cs[i];
         if lhs.ne(&rhs) {
             return Err(Error::SigmaProtocolVerifyFailed);
-        }
+        }        
     }
 
     // 4. Decryption Handle Correctness Formulas (for each chunk i)
@@ -798,9 +798,9 @@ fn verify_new_balance_sigma_proof(
         let rhs = alphas.a4s[i] * ek + rho * new_ds[i];
         if lhs.ne(&rhs) {
             return Err(Error::SigmaProtocolVerifyFailed);
-        }
+        }            
     }
-    // Below are the actual forms of parameters contained in the proof, these were computed during proving and listed here for convenience
+    // Below are the actual forms of parameters contained in the proof, these were computed during proving and listed here for convenience 
     //
     // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
     // X₂ = κ₃·H
