@@ -6,7 +6,7 @@ use merlin::Transcript;
 use soroban_sdk::{Bytes, Env};
 
 use super::confidential_balance::{
-    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS
+    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS,
 };
 use super::proof::BULLETPROOFS_NUM_BITS;
 
@@ -56,7 +56,7 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
 fn prove_range_generic<const N: usize>(
     chunks: &[u64; N],
     randomness: &[Scalar; N],
-    num_bits: usize
+    num_bits: usize,
 ) -> (RangeProofBytes, Vec<CompressedRistretto>) {
     // Create bulletproof generators
     let pc_gens = PedersenGens::default();
@@ -495,15 +495,16 @@ mod tests {
 
         // Create chunks where one chunk has a value > 2^16-1
         // We'll use values that fit in 32 bits but not 16 bits
-        let mut chunks = [0u64; BALANCE_CHUNKS];
-        chunks[0] = 1000u64;  // Valid 16-bit value
-        chunks[1] = 2000u64;  // Valid 16-bit value
-        chunks[2] = 70000u64; // Over 16-bit limit (70000 > 65535)
-        chunks[3] = 3000u64;  // Valid 16-bit value
-        chunks[4] = 4000u64;  // Valid 16-bit value
-        chunks[5] = 5000u64;  // Valid 16-bit value
-        chunks[6] = 6000u64;  // Valid 16-bit value
-        chunks[7] = 7000u64;  // Valid 16-bit value
+        let chunks = [
+            1000u64,  // Valid 16-bit value
+            2000u64,  // Valid 16-bit value
+            70000u64, // Over 16-bit limit (70000 > 65535)
+            3000u64,  // Valid 16-bit value
+            4000u64,  // Valid 16-bit value
+            5000u64,  // Valid 16-bit value
+            6000u64,  // Valid 16-bit value
+            7000u64,  // Valid 16-bit value
+        ];
 
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
 
@@ -514,9 +515,7 @@ mod tests {
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
         for i in 0..BALANCE_CHUNKS {
             encrypted_chunks[i] = EncryptedChunk {
-                amount: commitments[i]
-                    .decompress()
-                    .expect("Valid commitment"),
+                amount: commitments[i].decompress().expect("Valid commitment"),
                 handle: RistrettoPoint::identity(),
             };
         }
@@ -537,11 +536,12 @@ mod tests {
 
         // Create chunks where one chunk has a value > 2^16-1
         // We'll use values that fit in 32 bits but not 16 bits
-        let mut chunks = [0u64; AMOUNT_CHUNKS];
-        chunks[0] = 1000u64;  // Valid 16-bit value
-        chunks[1] = 80000u64; // Over 16-bit limit (80000 > 65535)
-        chunks[2] = 3000u64;  // Valid 16-bit value
-        chunks[3] = 4000u64;  // Valid 16-bit value
+        let chunks = [
+            1000u64,  // Valid 16-bit value
+            80000u64, // Over 16-bit limit (80000 > 65535)
+            3000u64,  // Valid 16-bit value
+            4000u64,  // Valid 16-bit value
+        ];
 
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
 
@@ -552,9 +552,7 @@ mod tests {
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
         for i in 0..AMOUNT_CHUNKS {
             encrypted_chunks[i] = EncryptedChunk {
-                amount: commitments[i]
-                    .decompress()
-                    .expect("Valid commitment"),
+                amount: commitments[i].decompress().expect("Valid commitment"),
                 handle: RistrettoPoint::identity(),
             };
         }
@@ -574,7 +572,7 @@ mod tests {
         // Create a balance where all chunks are at the maximum valid value (2^16-1 = 65535)
         let max_chunk_value = 65535u16; // 2^16 - 1
         let balance = (max_chunk_value as u128) * 0x0001000100010001000100010001u128; // All chunks are 0xFFFF
-        
+
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
         let result = prove_new_balance_range(balance, &randomness);
 
@@ -595,7 +593,7 @@ mod tests {
         // Create an amount where all chunks are at the maximum valid value (2^16-1 = 65535)
         let max_chunk_value = 65535u16; // 2^16 - 1
         let amount = (max_chunk_value as u64) * 0x000100010001u64; // All chunks are 0xFFFF
-        
+
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
         let result = prove_transfer_amount_range(amount, &randomness);
 
@@ -658,7 +656,8 @@ mod tests {
         let confidential_amount = ConfidentialAmount(amount_chunks);
 
         // Verification should fail
-        let amount_verify_result = verify_transfer_amount_range_proof(&confidential_amount, &amount_result.proof);
+        let amount_verify_result =
+            verify_transfer_amount_range_proof(&confidential_amount, &amount_result.proof);
         assert!(
             amount_verify_result.is_err(),
             "Proof verification should have failed for manipulated amount commitments"
