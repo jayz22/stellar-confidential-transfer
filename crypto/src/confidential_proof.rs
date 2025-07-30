@@ -6,7 +6,7 @@ use merlin::Transcript;
 use soroban_sdk::{Bytes, Env};
 
 use super::confidential_balance::{
-    ConfidentialAmount, ConfidentialBalance, EncryptedChunk, AMOUNT_CHUNKS, BALANCE_CHUNKS,
+    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS,
     CHUNK_SIZE_BITS,
 };
 
@@ -111,8 +111,8 @@ fn verify_range_generic<const N: usize>(
         .map_err(|_| "Range proof verification failed")
 }
 
-// Generic function to chunk a value into N 16-bit chunks.
-// For compatibility with the bulletproofs library, this extends each chunk to 64 bits.
+// Generic function to chunk a value into N 16-bit chunks.  For compatibility
+// with the bulletproofs library, this extends each chunk to 64 bits.
 fn chunk_value<const N: usize>(value: u128) -> [u64; N] {
     let mut chunks = [0u64; N];
     for i in 0..N {
@@ -138,8 +138,8 @@ fn chunk_u64(value: u64) -> [u64; 4] {
 /// Creates a zero-knowledge range proof for a 128-bit balance value.
 ///
 /// This function splits the balance into 8 chunks of 16 bits each and creates a
-/// bulletproof demonstrating that each chunk is within the valid range [0,
-/// 2^16).
+/// bulletproof demonstrating that each chunk is within the valid range
+/// [0, 2^16).
 ///
 /// # Arguments
 ///
@@ -169,8 +169,8 @@ pub fn prove_new_balance_range(
 /// Creates a zero-knowledge range proof for a 64-bit transfer amount.
 ///
 /// This function splits the amount into 4 chunks of 16 bits each and creates a
-/// bulletproof demonstrating that each chunk is within the valid range [0,
-/// 2^16).
+/// bulletproof demonstrating that each chunk is within the valid range
+/// [0, 2^16).
 ///
 /// # Arguments
 ///
@@ -262,6 +262,7 @@ pub fn verify_transfer_amount_range_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::confidential_balance::EncryptedChunk;
     use curve25519_dalek::traits::Identity;
     use std::array;
 
