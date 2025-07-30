@@ -68,8 +68,6 @@ impl ConfidentialAmountBytes {
 pub struct EncryptedChunk {
     pub amount: RistrettoPoint, // C
     pub handle: RistrettoPoint, // D
-    pub amount: RistrettoPoint, // C
-    pub handle: RistrettoPoint, // D
 }
 
 impl EncryptedChunk {
