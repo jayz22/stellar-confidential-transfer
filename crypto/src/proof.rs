@@ -702,10 +702,10 @@ pub fn verify_transfer_proof(
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
     new_balance: &ConfidentialBalanceBytes,
-    sender_amount: &ConfidentialBalanceBytes,
-    recipient_amount: &ConfidentialBalanceBytes,
+    sender_amount: &ConfidentialAmountBytes,
+    recipient_amount: &ConfidentialAmountBytes,
     auditor_eks: &CompressedPubkeyBytes,
-    auditor_amounts: &ConfidentialBalanceBytes,
+    auditor_amounts: &ConfidentialAmountBytes,
     proof: &TransferProofBytes,
 ) -> Result<(), Error> {
     verify_transfer_sigma_proof(
@@ -821,10 +821,10 @@ fn verify_transfer_sigma_proof(
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
     new_balance: &ConfidentialBalanceBytes,
-    sender_amount: &ConfidentialBalanceBytes,
-    recipient_amount: &ConfidentialBalanceBytes,
-    auditor_eks: &CompressedPubkeyBytes,
-    auditor_amounts: &ConfidentialBalanceBytes,
+    sender_amount: &ConfidentialAmountBytes,
+    recipient_amount: &ConfidentialAmountBytes,
+    auditor_ek: &CompressedPubkeyBytes,
+    auditor_amount: &ConfidentialAmountBytes,
     proof: &TransferSigmaProofBytes,
 ) -> Result<(), Error> {
     let rho = fiat_shamir_transfer_sigma_proof_challenge(
@@ -834,319 +834,121 @@ fn verify_transfer_sigma_proof(
         new_balance,
         sender_amount,
         recipient_amount,
-        auditor_eks,
-        auditor_amounts,
+        auditor_ek,
+        auditor_amount,
         &proof.xs,
     );
 
+    let sender_ek = sender_ek.to_point();
+    let recipient_ek = recipient_ek.to_point();
+    let auditor_ek = auditor_ek.to_point();
 
-    // let mut scalars_lhs = vec![gammas.g1];
-    // scalars_lhs.extend(&gammas.g2s);
-    // scalars_lhs.extend(&gammas.g3s);
-    // scalars_lhs.extend(&gammas.g4s);
-    // scalars_lhs.push(gammas.g5);
-    // scalars_lhs.extend(&gammas.g6s);
-    // for gamma in &gammas.g7s {
-    //     scalars_lhs.extend(gamma);
-    // }
-    // scalars_lhs.extend(&gammas.g8s);
+    let current_balance = ConfidentialBalance::from_env_bytes(current_balance);
+    let new_balance = ConfidentialBalance::from_env_bytes(new_balance);
 
-    // let mut points_lhs = vec![point_decompress(&proof.xs.x1)?];
-    // points_lhs.extend(
-    //     proof
-    //         .xs
-    //         .x2s
-    //         .iter()
-    //         .map(|x| point_decompress(x))
-    //         .collect::<Result<Vec<_>, _>>()?,
-    // );
-    // points_lhs.extend(
-    //     proof
-    //         .xs
-    //         .x3s
-    //         .iter()
-    //         .map(|x| point_decompress(x))
-    //         .collect::<Result<Vec<_>, _>>()?,
-    // );
-    // points_lhs.extend(
-    //     proof
-    //         .xs
-    //         .x4s
-    //         .iter()
-    //         .map(|x| point_decompress(x))
-    //         .collect::<Result<Vec<_>, _>>()?,
-    // );
-    // points_lhs.push(point_decompress(&proof.xs.x5)?);
-    // points_lhs.extend(
-    //     proof
-    //         .xs
-    //         .x6s
-    //         .iter()
-    //         .map(|x| point_decompress(x))
-    //         .collect::<Result<Vec<_>, _>>()?,
-    // );
-    // for xs in &proof.xs.x7s {
-    //     points_lhs.extend(
-    //         xs.iter()
-    //             .map(|x| point_decompress(x))
-    //             .collect::<Result<Vec<_>, _>>()?,
-    //     );
-    // }
-    // points_lhs.extend(
-    //     proof
-    //         .xs
-    //         .x8s
-    //         .iter()
-    //         .map(|x| point_decompress(x))
-    //         .collect::<Result<Vec<_>, _>>()?,
-    // );
+    let sender_amount = ConfidentialAmount::from_env_bytes(sender_amount);
+    let recipient_amount = ConfidentialAmount::from_env_bytes(recipient_amount);
+    let auditor_amount = ConfidentialAmount::from_env_bytes(auditor_amount);
 
-    // // scalar_g = γ₁·Σ(a₁ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₄ᵢ) + Σ(γ₆ᵢ·a₁ᵢ)
-    // let mut scalar_g = scalar_linear_combination(
-    //     &proof.alphas.a1s,
-    //     &(0..8)
-    //         .map(|i| new_scalar_from_pow2(i * 16))
-    //         .collect::<Vec<_>>(),
-    // );
-    // scalar_mul_assign(&mut scalar_g, &gammas.g1);
-    // for i in 0..4 {
-    //     scalar_add_assign(
-    //         &mut scalar_g,
-    //         &scalar_mul(&gammas.g4s[i], &proof.alphas.a4s[i]),
-    //     );
-    // }
-    // scalar_add_assign(
-    //     &mut scalar_g,
-    //     &scalar_linear_combination(&gammas.g6s, &proof.alphas.a1s),
-    // );
+    if !ConfidentialAmount::encrypted_amounts_are_equal(&sender_amount, &recipient_amount) || !ConfidentialAmount::encrypted_amounts_are_equal(&recipient_amount, &auditor_amount) {
+        return Err(Error::SigmaProtocolVerifyFailed);
+    }
 
-    // // scalar_h = γ₅·a₅ + Σ(γ₁·a₆ᵢ·2¹⁶ⁱ) - Σ(γ₁·a₃ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₃ᵢ) + Σ(γ₆ᵢ·a₆ᵢ)
-    // let mut scalar_h = scalar_mul(&gammas.g5, &proof.alphas.a5);
-    // for i in 0..8 {
-    //     scalar_add_assign(
-    //         &mut scalar_h,
-    //         &scalar_mul_3(
-    //             &gammas.g1,
-    //             &proof.alphas.a6s[i],
-    //             &new_scalar_from_pow2(i * 16),
-    //         ),
-    //     );
-    // }
-    // for i in 0..4 {
-    //     scalar_sub_assign(
-    //         &mut scalar_h,
-    //         &scalar_mul_3(
-    //             &gammas.g1,
-    //             &proof.alphas.a3s[i],
-    //             &new_scalar_from_pow2(i * 16),
-    //         ),
-    //     );
-    // }
-    // scalar_add_assign(
-    //     &mut scalar_h,
-    //     &scalar_linear_combination(&gammas.g4s, &proof.alphas.a3s),
-    // );
-    // scalar_add_assign(
-    //     &mut scalar_h,
-    //     &scalar_linear_combination(&gammas.g6s, &proof.alphas.a6s),
-    // );
+    let alphas = TransferSigmaProofAlphas::from_bytes(&proof.alphas)?;
+    let xs = TransferSigmaProofXs::from_bytes(&proof.xs)?;
 
-    // // scalar_sender_ek = Σ(γ₂ᵢ·a₆ᵢ) + γ₅·ρ + Σ(γ₈ᵢ·a₃ᵢ)
-    // let mut scalar_sender_ek = scalar_linear_combination(&gammas.g2s, &proof.alphas.a6s);
-    // scalar_add_assign(&mut scalar_sender_ek, &scalar_mul(&gammas.g5, &rho));
-    // scalar_add_assign(
-    //     &mut scalar_sender_ek,
-    //     &scalar_linear_combination(&gammas.g8s, &proof.alphas.a3s),
-    // );
+    // 1. Balance Preservation Formula
+    // X₁ = (Σ(a₁ᵢ·2¹⁶ⁱ)·G + Σ(a₆ᵢ·2¹⁶ⁱ)·H - Σ(a₃ᵢ·2¹⁶ⁱ)·H  - Σ(a₂·2¹⁶ⁱ)·D_new_balance_i + Σ(a₂·2¹⁶ⁱ)·D_current_balance_i + Σ(ρ·2¹⁶ⁱ)·C_current_balance_i - Σ(ρ·2¹⁶ⁱ)·C_transfer_amount_i)
+    let lhs = xs.x1;
+    let mut rhs = aggregate_scalar_chunks(&alphas.a1s) * basepoint();
+    rhs += (aggregate_scalar_chunks(&alphas.a6s) - aggregate_scalar_chunks(&alphas.a3s)) * hash_to_point_base();
+    
+    let curr_balance_ds = current_balance.get_decryption_handles();
+    let new_balance_ds = new_balance.get_decryption_handles();
+    rhs += aggregate_point_chunks(&curr_balance_ds) * alphas.a2;
+    rhs -= aggregate_point_chunks(&new_balance_ds) * alphas.a2;
+    
+    let curr_balance_cs = current_balance.get_encrypted_balances();
+    let transfer_amount_cs = recipient_amount.get_encrypted_amounts();
+    rhs += aggregate_point_chunks(&curr_balance_cs) * rho;
+    rhs -= aggregate_point_chunks(&transfer_amount_cs) * rho;
 
-    // // scalar_recipient_ek = Σ(γ₃ᵢ·a₃ᵢ)
-    // let mut scalar_recipient_ek = scalar_zero();
-    // for i in 0..4 {
-    //     scalar_add_assign(
-    //         &mut scalar_recipient_ek,
-    //         &scalar_mul(&gammas.g3s[i], &proof.alphas.a3s[i]),
-    //     );
-    // }
+    if lhs.ne(&rhs) {
+        return Err(Error::SigmaProtocolVerifyFailed);
+    }
 
-    // // scalar_ek_auditors[j] = Σ(γ₇ⱼᵢ·a₃ᵢ)
-    // let scalar_ek_auditors = gammas
-    //     .g7s
-    //     .iter()
-    //     .map(|gamma| {
-    //         let mut scalar_auditor_ek = scalar_zero();
-    //         for i in 0..4 {
-    //             scalar_add_assign(
-    //                 &mut scalar_auditor_ek,
-    //                 &scalar_mul(&gamma[i], &proof.alphas.a3s[i]),
-    //             );
-    //         }
-    //         scalar_auditor_ek
-    //     })
-    //     .collect::<Vec<_>>();
+    // 2. Sender New Balance Decryption Handle Correctness (for each chunk i)
+    // X₂ᵢ = a₆ᵢ·P_sender + ρ·D_new_balance_i
+    for i in 0..BALANCE_CHUNKS {
+        let lhs = xs.x2s[i];
+        let rhs = alphas.a6s[i] * sender_ek + rho * new_balance_ds[i];
+        if lhs.ne(&rhs) {
+            return Err(Error::SigmaProtocolVerifyFailed);
+        }
+    }
 
-    // // scalars_new_balance_d[i] = γ₂ᵢ·ρ - γ₁·a₂·2¹⁶ⁱ
-    // let scalars_new_balance_d = (0..8)
-    //     .map(|i| {
-    //         let mut scalar = scalar_mul(&gammas.g2s[i], &rho);
-    //         scalar_sub_assign(
-    //             &mut scalar,
-    //             &scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)),
-    //         );
-    //         scalar
-    //     })
-    //     .collect::<Vec<_>>();
+    // 3. Recipient Transfer Amount Decryption Handle Correctness (for each chunk i)
+    // X₃ᵢ = a₃ᵢ·P_recipient + ρ·D_recipient_amount_i
+    let recipient_ds = recipient_amount.get_decryption_handles();
+    for i in 0..AMOUNT_CHUNKS {
+        let lhs = xs.x3s[i];
+        let rhs = alphas.a3s[i] * recipient_ek + rho * recipient_ds[i];
+        if lhs.ne(&rhs) {
+            return Err(Error::SigmaProtocolVerifyFailed);
+        }
+    }
 
-    // // scalars_recipient_amount_d[i] = γ₃ᵢ·ρ
-    // let scalars_recipient_amount_d = (0..4)
-    //     .map(|i| scalar_mul(&gammas.g3s[i], &rho))
-    //     .collect::<Vec<_>>();
+    // 4. Transfer Amount Encryption Correctness (for each chunk i)
+    // X₄ᵢ = a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i
+    for i in 0..AMOUNT_CHUNKS {
+        let lhs = xs.x4s[i];
+        let rhs = alphas.a4s[i] * basepoint() + alphas.a3s[i] * hash_to_point_base() + rho * transfer_amount_cs[i];
+        if lhs.ne(&rhs) {
+            return Err(Error::SigmaProtocolVerifyFailed);
+        }
+    }
 
-    // // scalars_current_balance_d[i] = γ₁·a₂·2¹⁶ⁱ
-    // let scalars_current_balance_d = (0..8)
-    //     .map(|i| scalar_mul_3(&gammas.g1, &proof.alphas.a2, &new_scalar_from_pow2(i * 16)))
-    //     .collect::<Vec<_>>();
+    // 5. Sender Key-Pair Relationship
+    // X₅ = a₅·H + ρ·P_sender
+    let lhs = xs.x5;
+    let rhs = alphas.a5 * hash_to_point_base() + rho * sender_ek;
+    if lhs.ne(&rhs) {
+        return Err(Error::SigmaProtocolVerifyFailed);
+    }
 
-    // // scalars_auditor_amount_d[j][i] = γ₇ⱼᵢ·ρ
-    // let scalars_auditor_amount_d = gammas
-    //     .g7s
-    //     .iter()
-    //     .map(|gamma| {
-    //         gamma
-    //             .iter()
-    //             .map(|gamma| scalar_mul(gamma, &rho))
-    //             .collect::<Vec<_>>()
-    //     })
-    //     .collect::<Vec<_>>();
+    // 6. New Balance Encryption Correctness (for each chunk i)
+    // X₆ᵢ = a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i
+    let new_balance_cs = new_balance.get_encrypted_balances();
+    for i in 0..BALANCE_CHUNKS {
+        let lhs = xs.x6s[i];
+        let rhs = alphas.a1s[i] * basepoint() + alphas.a6s[i] * hash_to_point_base() + rho * new_balance_cs[i];
+        if lhs.ne(&rhs) {
+            return Err(Error::SigmaProtocolVerifyFailed);
+        }
+    }
 
-    // // scalars_sender_amount_d[i] = γ₈ᵢ·ρ
-    // let scalars_sender_amount_d = (0..4)
-    //     .map(|i| scalar_mul(&gammas.g8s[i], &rho))
-    //     .collect::<Vec<_>>();
+    // 7. Auditor Transfer Amount Decryption Handle Correctness (for each chunk i)
+    // X₇ᵢ = a₃ᵢ·P_auditor + ρ·D_auditor_amount_i
+    let auditor_amount_ds = auditor_amount.get_decryption_handles();
+    for i in 0..AMOUNT_CHUNKS {
+        let lhs = xs.x7s[i];
+        let rhs = alphas.a3s[i] * auditor_ek + rho * auditor_amount_ds[i];
+        if lhs.ne(&rhs) {
+            return Err(Error::SigmaProtocolVerifyFailed);
+        }
+    }
 
-    // // scalars_current_balance_c[i] = γ₁·ρ·2¹⁶ⁱ
-    // let scalars_current_balance_c = (0..8)
-    //     .map(|i| scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)))
-    //     .collect::<Vec<_>>();
+    // 8. Sender Amount Decryption Handle Correctness (for each chunk i)
+    // X₈ᵢ = a₃ᵢ·P_sender + ρ·D_sender_amount_i
+    let sender_amount_ds = sender_amount.get_decryption_handles();
+    for i in 0..AMOUNT_CHUNKS {
+        let lhs = xs.x8s[i];
+        let rhs = alphas.a3s[i] * sender_ek + rho * sender_amount_ds[i];
+        if lhs.ne(&rhs) {
+            return Err(Error::SigmaProtocolVerifyFailed);
+        }
+    }
 
-    // // scalars_transfer_amount_c[i] = γ₄ᵢ·ρ - γ₁·ρ·2¹⁶ⁱ
-    // let scalars_transfer_amount_c = (0..4)
-    //     .map(|i| {
-    //         let mut scalar = scalar_mul(&gammas.g4s[i], &rho);
-    //         scalar_sub_assign(
-    //             &mut scalar,
-    //             &scalar_mul_3(&gammas.g1, &rho, &new_scalar_from_pow2(i * 16)),
-    //         );
-    //         scalar
-    //     })
-    //     .collect::<Vec<_>>();
-
-    // // scalars_new_balance_c[i] = γ₆ᵢ·ρ
-    // let scalars_new_balance_c = (0..8)
-    //     .map(|i| scalar_mul(&gammas.g6s[i], &rho))
-    //     .collect::<Vec<_>>();
-
-    // let mut scalars_rhs = vec![scalar_g, scalar_h, scalar_sender_ek, scalar_recipient_ek];
-    // scalars_rhs.extend(scalar_ek_auditors);
-    // scalars_rhs.extend(scalars_new_balance_d);
-    // scalars_rhs.extend(scalars_recipient_amount_d);
-    // scalars_rhs.extend(scalars_current_balance_d);
-    // for scalars in scalars_auditor_amount_d {
-    //     scalars_rhs.extend(scalars);
-    // }
-    // scalars_rhs.extend(scalars_sender_amount_d);
-    // scalars_rhs.extend(scalars_current_balance_c);
-    // scalars_rhs.extend(scalars_transfer_amount_c);
-    // scalars_rhs.extend(scalars_new_balance_c);
-
-    // let mut points_rhs = vec![
-    //     basepoint(),
-    //     hash_to_point_base(),
-    //     pubkey_to_point(sender_ek)?,
-    //     pubkey_to_point(recipient_ek)?,
-    // ];
-    // points_rhs.extend(
-    //     auditor_eks
-    //         .iter()
-    //         .map(|ek| pubkey_to_point(ek))
-    //         .collect::<Result<Vec<_>, _>>()?,
-    // );
-    // points_rhs.extend(balance_to_points_d(new_balance));
-    // points_rhs.extend(balance_to_points_d(recipient_amount));
-    // points_rhs.extend(balance_to_points_d(current_balance));
-    // for balance in auditor_amounts {
-    //     points_rhs.extend(balance_to_points_d(balance));
-    // }
-    // points_rhs.extend(balance_to_points_d(sender_amount));
-    // points_rhs.extend(balance_to_points_c(current_balance));
-    // points_rhs.extend(balance_to_points_c(recipient_amount));
-    // points_rhs.extend(balance_to_points_c(new_balance));
-
-    // // LHS = γ₁·X₁ + Σ(γ₂ᵢ·X₂ᵢ) + Σ(γ₃ᵢ·X₃ᵢ) + Σ(γ₄ᵢ·X₄ᵢ) + γ₅·X₅ + Σ(γ₆ᵢ·X₆ᵢ) + Σ(γ₇ⱼᵢ·X₇ⱼᵢ) + Σ(γ₈ᵢ·X₈ᵢ)
-    // // RHS = scalar_g·G + scalar_h·H + scalar_sender_ek·P_sender + scalar_recipient_ek·P_recipient +
-    // //       Σ(scalar_ek_auditors[j]·P_auditor_j) +
-    // //       Σ(scalars_new_balance_d[i]·D_new_balance_i) +
-    // //       Σ(scalars_recipient_amount_d[i]·D_recipient_amount_i) +
-    // //       Σ(scalars_current_balance_d[i]·D_current_balance_i) +
-    // //       Σ(scalars_auditor_amount_d[j][i]·D_auditor_amount_j_i) +
-    // //       Σ(scalars_sender_amount_d[i]·D_sender_amount_i) +
-    // //       Σ(scalars_current_balance_c[i]·C_current_balance_i) +
-    // //       Σ(scalars_transfer_amount_c[i]·C_transfer_amount_i) +
-    // //       Σ(scalars_new_balance_c[i]·C_new_balance_i)
-
-    // // writing the RHS into one line
-    // // RHS = (γ₁·Σ(a₁ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₄ᵢ) + Σ(γ₆ᵢ·a₁ᵢ))·G +
-    // //       (γ₅·a₅ + Σ(γ₁·a₆ᵢ·2¹⁶ⁱ) - Σ(γ₁·a₃ᵢ·2¹⁶ⁱ) + Σ(γ₄ᵢ·a₃ᵢ) + Σ(γ₆ᵢ·a₆ᵢ))·H +
-    // //       (Σ(γ₂ᵢ·a₆ᵢ) + γ₅·ρ + Σ(γ₈ᵢ·a₃ᵢ))·P_sender +
-    // //       (Σ(γ₃ᵢ·a₃ᵢ))·P_recipient +
-    // //       Σ((Σ(γ₇ⱼᵢ·a₃ᵢ))·P_auditor_j) +
-    // //       Σ((γ₂ᵢ·ρ - γ₁·a₂·2¹⁶ⁱ)·D_new_balance_i) +
-    // //       Σ((γ₃ᵢ·ρ)·D_recipient_amount_i) +
-    // //       Σ((γ₁·a₂·2¹⁶ⁱ)·D_current_balance_i) +
-    // //       Σ((γ₇ⱼᵢ·ρ)·D_auditor_amount_j_i) +
-    // //       Σ((γ₈ᵢ·ρ)·D_sender_amount_i) +
-    // //       Σ((γ₁·ρ·2¹⁶ⁱ)·C_current_balance_i) +
-    // //       Σ((γ₄ᵢ·ρ - γ₁·ρ·2¹⁶ⁱ)·C_transfer_amount_i) +
-    // //       Σ((γ₆ᵢ·ρ)·C_new_balance_i)
-
-    // // Regroup the equation into chunks, grouped-by their gamma index
-    // // RHS = γ₁·(Σ(a₁ᵢ·2¹⁶ⁱ)·G + Σ(a₆ᵢ·2¹⁶ⁱ)·H - Σ(a₃ᵢ·2¹⁶ⁱ)·H  - Σ(a₂·2¹⁶ⁱ)·D_new_balance_i + Σ(a₂·2¹⁶ⁱ)·D_current_balance_i + Σ(ρ·2¹⁶ⁱ)·C_current_balance_i - Σ(ρ·2¹⁶ⁱ)·C_transfer_amount_i) +
-    // //       γ₂ᵢ·(a₆ᵢ·P_sender + ρ·D_new_balance_i) +
-    // //       γ₃ᵢ·(a₃ᵢ·P_recipient + ρ·D_recipient_amount_i) +
-    // //       γ₄ᵢ·(a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i) +
-    // //       γ₅·(a₅·H + ρ·P_sender) +
-    // //       γ₆ᵢ·(a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i) +
-    // //       γ₇ⱼᵢ·(a₃ᵢ·P_auditor_j + ρ·D_auditor_amount_j_i) +
-    // //       γ₈ᵢ·(a₃ᵢ·P_sender + ρ·D_sender_amount_i)
-
-    // // 1. Balance Preservation Formula
-
-    // // 2. Sender New Balance Decryption Handle Correctness (for each chunk i)
-    // // X₂ᵢ = a₆ᵢ·P_sender + ρ·D_new_balance_i
-
-    // // 3. Recipient Transfer Amount Decryption Handle Correctness (for each chunk i)
-    // // X₃ᵢ = a₃ᵢ·P_recipient + ρ·D_recipient_amount_i
-
-    // // 4. Transfer Amount Encryption Correctness (for each chunk i)
-    // // X₄ᵢ = a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i
-
-    // // 5. Sender Key-Pair Relationship
-    // // X₅ = a₅·H + ρ·P_sender
-
-    // // 6. New Balance Encryption Correctness (for each chunk i)
-    // // X₆ᵢ = a₁ᵢ·G + a₆ᵢ·H + ρ·C_new_balance_i
-
-    // // 7. Auditor Transfer Amount Decryption Handle Correctness (for each auditor j, chunk i)
-    // // X₇ⱼᵢ = a₃ᵢ·P_auditor_j + ρ·D_auditor_amount_j_i
-
-    // // 8. Sender Amount Decryption Handle Correctness (for each chunk i)
-    // // X₈ᵢ = a₃ᵢ·P_sender + ρ·D_sender_amount_i
-
-    // let lhs = multi_scalar_mul(&points_lhs, &scalars_lhs)?;
-    // let rhs = multi_scalar_mul(&points_rhs, &scalars_rhs)?;
-
-    // if !point_equals(&lhs, &rhs) {
-    //     return Err(Error::SigmaProtocolVerifyFailed);
-    // }
     Ok(())
 }
 
@@ -1172,7 +974,7 @@ fn verify_new_balance_range_proof(
 
 /// Verifies the validity of the `TransferBalanceRangeProof`.
 fn verify_transfer_amount_range_proof(
-    transfer_amount: &ConfidentialBalanceBytes,
+    transfer_amount: &ConfidentialAmountBytes,
     zkrp_transfer_amount: &RangeProofBytes,
 ) -> Result<(), Error> {
     todo!()
@@ -1228,10 +1030,10 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
     new_balance: &ConfidentialBalanceBytes,
-    sender_amount: &ConfidentialBalanceBytes,
-    recipient_amount: &ConfidentialBalanceBytes,
+    sender_amount: &ConfidentialAmountBytes,
+    recipient_amount: &ConfidentialAmountBytes,
     auditor_ek: &CompressedPubkeyBytes,
-    auditor_amount: &ConfidentialBalanceBytes,
+    auditor_amount: &ConfidentialAmountBytes,
     proof_xs: &TransferSigmaProofXsBytes,
 ) -> Scalar {
     // rho = H(DST, G, H, P_s, P_r, P_a, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..34})

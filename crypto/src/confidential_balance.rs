@@ -8,6 +8,7 @@ use soroban_sdk::{contracttype, Bytes, BytesN, Env, Vec};
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
 pub const CHUNK_SIZE_BITS: u64 = 16;
+pub const RISTRETTO_FIELD_SIZE_BITS: usize = 32;
 
 #[contracttype]
 #[derive(Debug, Clone)]
@@ -31,8 +32,8 @@ pub struct EncryptedChunkBytes {
 pub struct ConfidentialBalanceBytes(pub Vec<EncryptedChunkBytes>); // 8 chunks
 
 impl ConfidentialBalanceBytes {
-    pub fn to_bytes(&self) -> [u8; 512]{
-        assert_eq!(self.0.len(), 8);
+    pub fn to_bytes(&self) -> [u8; 2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BITS]{
+        assert_eq!(self.0.len() as usize, BALANCE_CHUNKS);
         let mut bytes = [0u8; 512];
         let mut i = 0;        
         for chunk in self.0.iter() {
@@ -47,6 +48,21 @@ impl ConfidentialBalanceBytes {
 
 #[derive(Debug, Clone)]
 pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
+
+impl ConfidentialAmountBytes {
+    pub fn to_bytes(&self) -> [u8; 2 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BITS]{
+        assert_eq!(self.0.len() as usize, AMOUNT_CHUNKS);
+        let mut bytes = [0u8; 256];
+        let mut i = 0;        
+        for chunk in self.0.iter() {
+            bytes[i..i+32].copy_from_slice(&chunk.amount.0.to_array());
+            bytes[i+32..i+64].copy_from_slice(&chunk.handle.0.to_array());
+            i+=64;
+        }
+        debug_assert!(i == 256);
+        bytes
+    }    
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct EncryptedChunk {
@@ -114,6 +130,34 @@ impl ConfidentialAmount {
         }
         ConfidentialAmount(encrypted_chunks)        
     }
+
+    pub fn get_encrypted_amounts(&self) -> [RistrettoPoint; AMOUNT_CHUNKS] {
+        let mut amounts = [RistrettoPoint::default(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            amounts[i] = self.0[i].amount;
+        }
+        amounts
+    }
+
+    pub fn get_decryption_handles(&self) -> [RistrettoPoint; AMOUNT_CHUNKS] {
+        let mut handles = [RistrettoPoint::default(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            handles[i] = self.0[i].handle;
+        }
+        handles
+    }
+
+    // this just compare chunk by chunk, that each pair of chunks are the same value
+    // it does *not* account for normalization semantics.  
+    pub fn encrypted_amounts_are_equal(lhs: &Self, rhs: &Self) -> bool {
+        for i in 0..AMOUNT_CHUNKS {
+            if lhs.0[i].amount != rhs.0[i].amount {
+                return false
+            }
+        }
+        true
+    }
+
 }
 
 impl ConfidentialBalance {
