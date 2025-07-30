@@ -122,6 +122,21 @@ impl ConfidentialAmount {
         ConfidentialAmount(encrypted_chunks)
     }
 
+    #[cfg(test)]
+    pub fn new_amount_from_u64(
+        amount: u64,
+        randomness: &[Scalar; AMOUNT_CHUNKS],
+        ek: &RistrettoPoint,
+    ) -> ConfidentialAmount {
+        let balance_chunks = split_into_chunks_u64(amount);
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            encrypted_chunks[i] = EncryptedChunk::new(&balance_chunks[i], &randomness[i], ek);
+        }
+        ConfidentialAmount(encrypted_chunks)
+    }
+
+
     pub fn from_env_bytes(bytes: &ConfidentialAmountBytes) -> Self {
         assert_eq!(bytes.0.len() as usize, AMOUNT_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
@@ -129,6 +144,14 @@ impl ConfidentialAmount {
             encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
         }
         ConfidentialAmount(encrypted_chunks)        
+    }
+
+    pub fn to_env_bytes(&self, e: &Env) -> ConfidentialAmountBytes {
+        let mut chunks = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            chunks.push_back(self.0[i].to_env_bytes(e));
+        }
+        ConfidentialAmountBytes(chunks)
     }
 
     pub fn get_encrypted_amounts(&self) -> [RistrettoPoint; AMOUNT_CHUNKS] {
@@ -266,6 +289,14 @@ pub mod testutils {
         res
     }
 
+    pub fn generate_amount_randomness() -> [Scalar; AMOUNT_CHUNKS] {
+        let mut res = [Scalar::ZERO; AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            res[i] = Scalar::random(&mut OsRng)
+        }
+        res
+    }
+
     pub fn new_balance_with_mismatched_decryption_handle(correct_balance: &ConfidentialBalanceBytes, ek: &RistrettoPoint) -> ConfidentialBalanceBytes {
         let r = generate_balance_randomness();
         let mut wrong_balance = ConfidentialBalance::from_env_bytes(correct_balance);
@@ -284,8 +315,8 @@ pub fn prove_new_balance_range(e: &Env, _new_balance: u128, _randomness: &[Scala
     RangeProofBytes(Bytes::new(e))
 }
 
-pub fn prove_transfer_amount_range(_new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {
-    todo!()
+pub fn prove_transfer_amount_range(e: &Env, _new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {
+    RangeProofBytes(Bytes::new(e))
 }
 
 pub fn verify_new_balance_range_proof(_new_balance: &ConfidentialBalance, _proof: &RangeProofBytes) {
