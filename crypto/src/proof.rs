@@ -21,7 +21,7 @@ const FIAT_SHAMIR_NORMALIZATION_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/NormalizationProofFiatShamir";
 
 const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof";
-const BULLETPROOFS_NUM_BITS: u64 = 16;
+pub const BULLETPROOFS_NUM_BITS: usize = 16;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
