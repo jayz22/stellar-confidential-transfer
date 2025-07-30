@@ -34,9 +34,65 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
 // [0, 2^16). Is that upper bound right? Should it be up to 2^32? Or can we
 // assume all chunks are normalized to 16 bits?
 
-// TODO: Feels like there's a lot of deduplication that can be done here. The
-// only real difference between these proofs is the number of chunks. Maybe we
-// can extract some common helper functions here.
+// Generic helper function to create range proofs for chunked values
+fn prove_range_generic<const N: usize>(
+    chunks: &[u64; N],
+    randomness: &[Scalar; N],
+) -> (RangeProofBytes, Vec<CompressedRistretto>) {
+    // Create bulletproof generators
+    let pc_gens = PedersenGens::default();
+    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+
+    // Create transcript with domain separation
+    let mut transcript = Transcript::new(BULLETPROOFS_DST);
+
+    // Create the batched range proof for all chunks, each proving value is in [0, 2^16)
+    let (proof, commitments) = RangeProof::prove_multiple(
+        &bp_gens,
+        &pc_gens,
+        &mut transcript,
+        chunks,
+        randomness,
+        CHUNK_SIZE_BITS as usize,
+    )
+    .expect("Failed to create range proof");
+
+    // Serialize the proof
+    let proof_bytes = proof.to_bytes();
+    (
+        RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
+        commitments,
+    )
+}
+
+// Generic helper function to verify range proofs
+fn verify_range_generic<const N: usize>(
+    commitments: &[CompressedRistretto],
+    proof: &RangeProofBytes,
+) -> Result<(), &'static str> {
+    // Create the same bulletproof generators used in proving
+    let pc_gens = PedersenGens::default();
+    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+
+    // Create transcript with the same domain separation
+    let mut transcript = Transcript::new(BULLETPROOFS_DST);
+
+    // Deserialize the proof
+    let proof_bytes: Vec<u8> = proof.0.iter().collect();
+    let range_proof =
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| "Failed to deserialize range proof")?;
+
+    // Verify the range proof
+    range_proof
+        .verify_multiple(
+            &bp_gens,
+            &pc_gens,
+            &mut transcript,
+            commitments,
+            CHUNK_SIZE_BITS as usize,
+        )
+        .map_err(|_| "Range proof verification failed")
+}
 
 // Generic function to chunk a value into N 16-bit chunks.
 // For compatibility with the bulletproofs library, this extends each chunk to 64 bits.
@@ -72,32 +128,16 @@ pub fn prove_new_balance_range(
     new_balance: u128,
     randomness: &[Scalar; BALANCE_CHUNKS],
 ) -> BalanceRangeProofResult {
-    // Create bulletproof generators
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, BALANCE_CHUNKS); // 64 generators for 8 parties (chunks)
-
-    // Create transcript with domain separation
-    let mut transcript = Transcript::new(BULLETPROOFS_DST);
-
     // Split balance into chunks
     let chunks = chunk_u128(new_balance);
 
-    // Create the batched range proof for all 8 chunks, each proving value is in [0, 2^16)
-    let (proof, commitments) = RangeProof::prove_multiple(
-        &bp_gens,
-        &pc_gens,
-        &mut transcript,
-        &chunks,
-        randomness,
-        CHUNK_SIZE_BITS as usize,
-    )
-    .expect("Failed to create range proof");
+    // Use generic helper to create the range proof
+    let (proof, commitments) = prove_range_generic(&chunks, randomness);
 
     // Serialize the proof
-    let proof_bytes = proof.to_bytes();
     BalanceRangeProofResult {
-        proof: RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
-        commitments,
+        proof,
+        commitments
     }
 }
 
@@ -105,31 +145,14 @@ pub fn prove_transfer_amount_range(
     new_amount: u64,
     randomness: &[Scalar; AMOUNT_CHUNKS],
 ) -> AmountRangeProofResult {
-    // Create bulletproof generators
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, AMOUNT_CHUNKS); // 64 generators for 4 parties (chunks)
-
-    // Create transcript with domain separation
-    let mut transcript = Transcript::new(BULLETPROOFS_DST);
-
     // Split amount into chunks
     let chunks = chunk_u64(new_amount);
 
-    // Create the batched range proof for all 4 chunks, each proving value is in [0, 2^16)
-    let (proof, commitments) = RangeProof::prove_multiple(
-        &bp_gens,
-        &pc_gens,
-        &mut transcript,
-        &chunks,
-        randomness,
-        CHUNK_SIZE_BITS as usize,
-    )
-    .expect("Failed to create range proof");
+    // Use generic helper to create the range proof
+    let (proof, commitments) = prove_range_generic(&chunks, randomness);
 
-    // Serialize the proof
-    let proof_bytes = proof.to_bytes();
     AmountRangeProofResult {
-        proof: RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
+        proof,
         commitments,
     }
 }
@@ -138,13 +161,6 @@ pub fn verify_new_balance_range_proof(
     new_balance: &ConfidentialBalance,
     proof: &RangeProofBytes,
 ) -> Result<(), &'static str> {
-    // Create the same bulletproof generators used in proving
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, BALANCE_CHUNKS);
-
-    // Create transcript with the same domain separation
-    let mut transcript = Transcript::new(BULLETPROOFS_DST);
-
     // Extract Pedersen commitments from the confidential balance
     let balance_points = new_balance.get_encrypted_balances();
 
@@ -154,34 +170,14 @@ pub fn verify_new_balance_range_proof(
         .map(|point| point.compress())
         .collect();
 
-    // Deserialize the proof
-    let proof_bytes: Vec<u8> = proof.0.iter().collect();
-    let range_proof =
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| "Failed to deserialize range proof")?;
-
-    // Verify the range proof
-    range_proof
-        .verify_multiple(
-            &bp_gens,
-            &pc_gens,
-            &mut transcript,
-            &commitments,
-            CHUNK_SIZE_BITS as usize,
-        )
-        .map_err(|_| "Range proof verification failed")
+    // Use generic helper to verify the range proof
+    verify_range_generic::<BALANCE_CHUNKS>(&commitments, proof)
 }
 
 pub fn verify_transfer_amount_range_proof(
     new_amount: &ConfidentialAmount,
     proof: &RangeProofBytes,
 ) -> Result<(), &'static str> {
-    // Create the same bulletproof generators used in proving
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, AMOUNT_CHUNKS);
-
-    // Create transcript with the same domain separation
-    let mut transcript = Transcript::new(BULLETPROOFS_DST);
-
     // Extract Pedersen commitments from the confidential amount
     let amount_points = new_amount.get_encrypted_amounts();
 
@@ -189,21 +185,8 @@ pub fn verify_transfer_amount_range_proof(
     let commitments: Vec<CompressedRistretto> =
         amount_points.iter().map(|point| point.compress()).collect();
 
-    // Deserialize the proof
-    let proof_bytes: Vec<u8> = proof.0.iter().collect();
-    let range_proof =
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| "Failed to deserialize range proof")?;
-
-    // Verify the range proof
-    range_proof
-        .verify_multiple(
-            &bp_gens,
-            &pc_gens,
-            &mut transcript,
-            &commitments,
-            CHUNK_SIZE_BITS as usize,
-        )
-        .map_err(|_| "Range proof verification failed")
+    // Use generic helper to verify the range proof
+    verify_range_generic::<AMOUNT_CHUNKS>(&commitments, proof)
 }
 
 #[cfg(test)]
@@ -233,13 +216,11 @@ mod tests {
         );
 
         // Verify that the commitments from the proof match those from the confidential balance
-        let expected_commitments: Vec<CompressedRistretto> = confidential_balance
-            .get_encrypted_balances()
+        let expected_commitments: Vec<CompressedRistretto> = confidential_balance.get_encrypted_balances()
             .iter()
             .map(|point| point.compress())
             .collect();
-        assert_eq!(
-            result.commitments, expected_commitments,
+        assert_eq!(result.commitments, expected_commitments,
             "Commitments from proof do not match expected commitments"
         );
     }
