@@ -1622,7 +1622,7 @@ pub mod testutils {
 #[cfg(test)]
 mod tests {
     use crate::arith::pubkey_from_secret_key;
-    use crate::confidential_balance::testutils::generate_balance_randomness;
+    use crate::confidential_balance::testutils::{generate_balance_randomness, new_balance_with_mismatched_decryption_handle};
 
     use super::*;
     use super::testutils::*;
@@ -1647,16 +1647,57 @@ mod tests {
         let dk = new_scalar_from_u64(123);
         let ek = pubkey_from_secret_key(&dk);
 
-        let _wrong_ek = pubkey_from_secret_key(&new_scalar_from_u64(345));
+        {
+            // correct transaction    
+            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let amount = 100u64;
+            let new_balance = 900u128;
+    
+            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+    
+            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
+            assert!(res.is_ok())
+        }
 
-        let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
-        let amount = 100u64;
-        let new_balance = 900u128;
+        {
+            // wrong public key. 
+            let wrong_ek = pubkey_from_secret_key(&new_scalar_from_u64(345));
+            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let amount = 100u64;
+            let new_balance = 900u128;
 
-        let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+    
+            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &wrong_ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
+            assert!(res.is_err())
+        }
 
-        let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
-        assert!(res.is_ok())
+        {
+            // wrong balance
+            let wrong_ek = pubkey_from_secret_key(&new_scalar_from_u64(345));
+            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let amount = 100u64;
+            let new_balance = 901u128; // correct balance should be 900
+
+            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+    
+            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &wrong_ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
+            assert!(res.is_err())            
+        }
+
+        {
+            // wrong decryption handle
+            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let amount = 100u64;
+            let new_balance = 900u128;
+    
+            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+            
+            let wrong_balance = new_balance_with_mismatched_decryption_handle(&new_balance, &ek);
+            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &ek), amount, &current_balance.to_env_bytes(&env), &wrong_balance, &proof);
+            assert!(res.is_err())
+
+        }
     }
 
     // #[test]

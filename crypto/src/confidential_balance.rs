@@ -209,6 +209,8 @@ pub fn split_into_chunks_u128(balance: u128) -> [Scalar; BALANCE_CHUNKS] {
 
 #[cfg(test)]
 pub mod testutils {
+    use crate::arith::point_mul;
+
     use super::*;
     use rand::rngs::OsRng;
 
@@ -218,6 +220,15 @@ pub mod testutils {
             res[i] = Scalar::random(&mut OsRng)
         }
         res
+    }
+
+    pub fn new_balance_with_mismatched_decryption_handle(correct_balance: &ConfidentialBalanceBytes, ek: &RistrettoPoint) -> ConfidentialBalanceBytes {
+        let r = generate_balance_randomness();
+        let mut wrong_balance = ConfidentialBalance::from_env_bytes(correct_balance);
+        for i in 0..BALANCE_CHUNKS {
+            wrong_balance.0[i].handle = point_mul(ek, &r[i]);
+        }
+        wrong_balance.to_env_bytes(correct_balance.0.env())
     }
 }
 
