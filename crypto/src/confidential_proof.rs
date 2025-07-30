@@ -6,9 +6,22 @@ use merlin::Transcript;
 use soroban_sdk::{Bytes, Env};
 
 use super::confidential_balance::{
-    ConfidentialAmount, ConfidentialBalance,
-    AMOUNT_CHUNKS, BALANCE_CHUNKS, CHUNK_SIZE_BITS,
+    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS, CHUNK_SIZE_BITS,
 };
+
+// Result struct for prove_new_balance_range
+#[derive(Debug, Clone)]
+pub struct BalanceRangeProofResult {
+    pub proof: RangeProofBytes,
+    pub commitments: Vec<CompressedRistretto>,
+}
+
+// Result struct for prove_transfer_amount_range
+#[derive(Debug, Clone)]
+pub struct AmountRangeProofResult {
+    pub proof: RangeProofBytes,
+    pub commitments: Vec<CompressedRistretto>,
+}
 
 // Max bitsize for range proofs
 const RANGEPROOF_GENS_CAPACITY: usize = 64;
@@ -58,7 +71,7 @@ fn chunk_u64(value: u64) -> [u64; 4] {
 pub fn prove_new_balance_range(
     new_balance: u128,
     randomness: &[Scalar; BALANCE_CHUNKS],
-) -> RangeProofBytes {
+) -> BalanceRangeProofResult {
     // Create bulletproof generators
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, BALANCE_CHUNKS); // 64 generators for 8 parties (chunks)
@@ -69,9 +82,8 @@ pub fn prove_new_balance_range(
     // Split balance into chunks
     let chunks = chunk_u128(new_balance);
 
-    // TODO: Left off here. Do I need to return the commitments as well?
     // Create the batched range proof for all 8 chunks, each proving value is in [0, 2^16)
-    let (proof, _commitments) = RangeProof::prove_multiple(
+    let (proof, commitments) = RangeProof::prove_multiple(
         &bp_gens,
         &pc_gens,
         &mut transcript,
@@ -83,14 +95,16 @@ pub fn prove_new_balance_range(
 
     // Serialize the proof
     let proof_bytes = proof.to_bytes();
-    RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes))
+    BalanceRangeProofResult {
+        proof: RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
+        commitments,
+    }
 }
 
-// TOOD: Still need to cleanup this function
 pub fn prove_transfer_amount_range(
     new_amount: u64,
     randomness: &[Scalar; AMOUNT_CHUNKS],
-) -> RangeProofBytes {
+) -> AmountRangeProofResult {
     // Create bulletproof generators
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, AMOUNT_CHUNKS); // 64 generators for 4 parties (chunks)
@@ -102,7 +116,7 @@ pub fn prove_transfer_amount_range(
     let chunks = chunk_u64(new_amount);
 
     // Create the batched range proof for all 4 chunks, each proving value is in [0, 2^16)
-    let (proof, _commitments) = RangeProof::prove_multiple(
+    let (proof, commitments) = RangeProof::prove_multiple(
         &bp_gens,
         &pc_gens,
         &mut transcript,
@@ -114,7 +128,10 @@ pub fn prove_transfer_amount_range(
 
     // Serialize the proof
     let proof_bytes = proof.to_bytes();
-    RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes))
+    AmountRangeProofResult {
+        proof: RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
+        commitments,
+    }
 }
 
 pub fn verify_new_balance_range_proof(
@@ -161,24 +178,22 @@ pub fn verify_transfer_amount_range_proof(
     // Create the same bulletproof generators used in proving
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, AMOUNT_CHUNKS);
-    
+
     // Create transcript with the same domain separation
     let mut transcript = Transcript::new(BULLETPROOFS_DST);
-    
+
     // Extract Pedersen commitments from the confidential amount
     let amount_points = new_amount.get_encrypted_amounts();
-    
+
     // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
-    let commitments: Vec<CompressedRistretto> = amount_points
-        .iter()
-        .map(|point| point.compress())
-        .collect();
-    
+    let commitments: Vec<CompressedRistretto> =
+        amount_points.iter().map(|point| point.compress()).collect();
+
     // Deserialize the proof
     let proof_bytes: Vec<u8> = proof.0.iter().collect();
-    let range_proof = RangeProof::from_bytes(&proof_bytes)
-        .map_err(|_| "Failed to deserialize range proof")?;
-    
+    let range_proof =
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| "Failed to deserialize range proof")?;
+
     // Verify the range proof
     range_proof
         .verify_multiple(
@@ -204,14 +219,18 @@ mod tests {
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
 
         // Create the range proof
-        let proof = prove_new_balance_range(balance, &randomness);
+        let result = prove_new_balance_range(balance, &randomness);
 
         // Create a confidential balance using new_balance_with_no_randomness
         let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
 
         // Verify the proof
-        let result = verify_new_balance_range_proof(&confidential_balance, &proof);
-        assert!(result.is_ok(), "Proof verification failed: {:?}", result);
+        let verify_result = verify_new_balance_range_proof(&confidential_balance, &result.proof);
+        assert!(
+            verify_result.is_ok(),
+            "Proof verification failed: {:?}",
+            verify_result
+        );
     }
 
     #[test]
@@ -219,7 +238,7 @@ mod tests {
         // Create a proof for one balance
         let balance = 12345u128;
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        let proof = prove_new_balance_range(balance, &randomness);
+        let result = prove_new_balance_range(balance, &randomness);
 
         // But create commitments for a different balance
         let wrong_balance = 54321u128;
@@ -227,8 +246,11 @@ mod tests {
             ConfidentialBalance::new_balance_with_no_randomness(wrong_balance);
 
         // Verification should fail
-        let result = verify_new_balance_range_proof(&confidential_balance, &proof);
-        assert!(result.is_err(), "Proof verification should have failed");
+        let verify_result = verify_new_balance_range_proof(&confidential_balance, &result.proof);
+        assert!(
+            verify_result.is_err(),
+            "Proof verification should have failed"
+        );
     }
 
     #[test]
@@ -244,51 +266,58 @@ mod tests {
         let result = verify_new_balance_range_proof(&confidential_balance, &invalid_proof);
         assert!(result.is_err(), "Proof verification should have failed");
     }
-    
+
     #[test]
     fn test_prove_and_verify_transfer_amount_range() {
         // Test with a valid 64-bit amount
         let amount = 0x123456789ABCDEFu64;
-        
+
         // Use zero randomness for the proof
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
-        
+
         // Create the range proof
-        let proof = prove_transfer_amount_range(amount, &randomness);
-        
+        let result = prove_transfer_amount_range(amount, &randomness);
+
         // Create a confidential amount using new_amount_with_no_randomness
         let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(amount);
-        
+
         // Verify the proof
-        let result = verify_transfer_amount_range_proof(&confidential_amount, &proof);
-        assert!(result.is_ok(), "Proof verification failed: {:?}", result);
+        let verify_result = verify_transfer_amount_range_proof(&confidential_amount, &result.proof);
+        assert!(
+            verify_result.is_ok(),
+            "Proof verification failed: {:?}",
+            verify_result
+        );
     }
-    
+
     #[test]
     fn test_verify_transfer_amount_with_wrong_amount_fails() {
         // Create a proof for one amount
         let amount = 12345u64;
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
-        let proof = prove_transfer_amount_range(amount, &randomness);
-        
+        let result = prove_transfer_amount_range(amount, &randomness);
+
         // But create commitments for a different amount
         let wrong_amount = 54321u64;
         let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(wrong_amount);
-        
+
         // Verification should fail
-        let result = verify_transfer_amount_range_proof(&confidential_amount, &proof);
-        assert!(result.is_err(), "Proof verification should have failed");
+        let verify_result = verify_transfer_amount_range_proof(&confidential_amount, &result.proof);
+        assert!(
+            verify_result.is_err(),
+            "Proof verification should have failed"
+        );
     }
-    
+
     #[test]
     fn test_verify_transfer_amount_with_invalid_proof_bytes_fails() {
         // Create a valid amount
         let amount = 12345u64;
         let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(amount);
-        
+
         // Create invalid proof bytes
         let invalid_proof = RangeProofBytes(Bytes::from_slice(&Env::default(), &[0u8; 100]));
-        
+
         // Verification should fail
         let result = verify_transfer_amount_range_proof(&confidential_amount, &invalid_proof);
         assert!(result.is_err(), "Proof verification should have failed");
