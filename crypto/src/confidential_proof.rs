@@ -6,9 +6,9 @@ use merlin::Transcript;
 use soroban_sdk::{Bytes, Env};
 
 use super::confidential_balance::{
-    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS,
-    CHUNK_SIZE_BITS,
+    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS
 };
+use super::proof::BULLETPROOFS_NUM_BITS;
 
 /// Result of proving a balance value is within valid range.
 ///
@@ -50,10 +50,13 @@ const RANGEPROOF_GENS_CAPACITY: usize = 64;
 // Label to use for domain separation in bulletproofs transcripts
 const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
 
-// Generic helper function to create range proofs for chunked values
+// Generic helper function to create range proofs for chunked values. Provides a
+// proof that each chunk is in the range [0, 2^num_bits). With the exception of
+// testing, `num_bits` should always be `BULLETPROOFS_NUM_BITS` (16).
 fn prove_range_generic<const N: usize>(
     chunks: &[u64; N],
     randomness: &[Scalar; N],
+    num_bits: usize
 ) -> (RangeProofBytes, Vec<CompressedRistretto>) {
     // Create bulletproof generators
     let pc_gens = PedersenGens::default();
@@ -70,7 +73,7 @@ fn prove_range_generic<const N: usize>(
         &mut transcript,
         chunks,
         randomness,
-        CHUNK_SIZE_BITS as usize,
+        num_bits,
     )
     .expect("Failed to create range proof");
 
@@ -106,7 +109,7 @@ fn verify_range_generic<const N: usize>(
             &pc_gens,
             &mut transcript,
             commitments,
-            CHUNK_SIZE_BITS as usize,
+            BULLETPROOFS_NUM_BITS as usize,
         )
         .map_err(|_| "Range proof verification failed")
 }
@@ -160,7 +163,7 @@ pub fn prove_new_balance_range(
     let chunks = chunk_u128(new_balance);
 
     // Use generic helper to create the range proof
-    let (proof, commitments) = prove_range_generic(&chunks, randomness);
+    let (proof, commitments) = prove_range_generic(&chunks, randomness, BULLETPROOFS_NUM_BITS);
 
     // Serialize the proof
     BalanceRangeProofResult { proof, commitments }
@@ -190,7 +193,7 @@ pub fn prove_transfer_amount_range(
     let chunks = chunk_u64(new_amount);
 
     // Use generic helper to create the range proof
-    let (proof, commitments) = prove_range_generic(&chunks, randomness);
+    let (proof, commitments) = prove_range_generic(&chunks, randomness, BULLETPROOFS_NUM_BITS);
 
     AmountRangeProofResult { proof, commitments }
 }
@@ -266,38 +269,6 @@ mod tests {
     use crate::confidential_balance::EncryptedChunk;
     use curve25519_dalek::traits::Identity;
     use std::array;
-
-    // Helper function to create a range proof with custom bit size
-    fn create_range_proof_with_bit_size<const N: usize>(
-        chunks: &[u64; N],
-        randomness: &[Scalar; N],
-        bit_size: usize,
-    ) -> (RangeProofBytes, Vec<CompressedRistretto>) {
-        // Create bulletproof generators
-        let pc_gens = PedersenGens::default();
-        let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
-
-        // Create transcript with domain separation
-        let mut transcript = Transcript::new(BULLETPROOFS_DST);
-
-        // Create the batched range proof for all chunks with custom bit size
-        let (proof, commitments) = RangeProof::prove_multiple(
-            &bp_gens,
-            &pc_gens,
-            &mut transcript,
-            chunks,
-            randomness,
-            bit_size,
-        )
-        .expect("Failed to create range proof");
-
-        // Serialize the proof
-        let proof_bytes = proof.to_bytes();
-        (
-            RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
-            commitments,
-        )
-    }
 
     #[test]
     fn test_prove_and_verify_new_balance_range() {
@@ -537,7 +508,7 @@ mod tests {
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
 
         // Create a valid range proof for 32-bit chunks
-        let (proof_32bit, commitments) = create_range_proof_with_bit_size(&chunks, &randomness, 32);
+        let (proof_32bit, commitments) = prove_range_generic(&chunks, &randomness, 32);
 
         // Create a confidential balance using the commitments from the 32-bit proof
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
@@ -575,7 +546,7 @@ mod tests {
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
 
         // Create a valid range proof for 32-bit chunks
-        let (proof_32bit, commitments) = create_range_proof_with_bit_size(&chunks, &randomness, 32);
+        let (proof_32bit, commitments) = prove_range_generic(&chunks, &randomness, 32);
 
         // Create a confidential amount using the commitments from the 32-bit proof
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
