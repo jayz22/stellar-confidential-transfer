@@ -276,26 +276,6 @@ pub mod testutils {
     }
 }
 
-
-
-// range proof
-
-pub fn prove_new_balance_range(e: &Env, _new_balance: u128, _randomness: &[Scalar; BALANCE_CHUNKS]) -> RangeProofBytes {
-    RangeProofBytes(Bytes::new(e))
-}
-
-pub fn prove_transfer_amount_range(_new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {
-    todo!()
-}
-
-pub fn verify_new_balance_range_proof(_new_balance: &ConfidentialBalance, _proof: &RangeProofBytes) {
-    todo!()
-}
-
-pub fn verify_transfer_amount_range_proof(_new_amount: &ConfidentialAmount, _proof: &RangeProofBytes) {
-    todo!()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
