@@ -262,9 +262,42 @@ pub fn verify_transfer_amount_range_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arith;
     use crate::confidential_balance::EncryptedChunk;
     use curve25519_dalek::traits::Identity;
     use std::array;
+
+    // Helper function to create a range proof with custom bit size
+    fn create_range_proof_with_bit_size<const N: usize>(
+        chunks: &[u64; N],
+        randomness: &[Scalar; N],
+        bit_size: usize,
+    ) -> (RangeProofBytes, Vec<CompressedRistretto>) {
+        // Create bulletproof generators
+        let pc_gens = PedersenGens::default();
+        let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+
+        // Create transcript with domain separation
+        let mut transcript = Transcript::new(BULLETPROOFS_DST);
+
+        // Create the batched range proof for all chunks with custom bit size
+        let (proof, commitments) = RangeProof::prove_multiple(
+            &bp_gens,
+            &pc_gens,
+            &mut transcript,
+            chunks,
+            randomness,
+            bit_size,
+        )
+        .expect("Failed to create range proof");
+
+        // Serialize the proof
+        let proof_bytes = proof.to_bytes();
+        (
+            RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
+            commitments,
+        )
+    }
 
     #[test]
     fn test_prove_and_verify_new_balance_range() {
@@ -482,6 +515,182 @@ mod tests {
         assert_eq!(
             result.commitments, expected_commitments,
             "Commitments from proof do not match expected commitments"
+        );
+    }
+
+    #[test]
+    fn test_verify_balance_with_chunk_over_16_bits_fails() {
+        use curve25519_dalek::ristretto::RistrettoPoint;
+
+        // Create chunks where one chunk has a value > 2^16-1
+        // We'll use values that fit in 32 bits but not 16 bits
+        let mut chunks = [0u64; BALANCE_CHUNKS];
+        chunks[0] = 1000u64;  // Valid 16-bit value
+        chunks[1] = 2000u64;  // Valid 16-bit value
+        chunks[2] = 70000u64; // Over 16-bit limit (70000 > 65535)
+        chunks[3] = 3000u64;  // Valid 16-bit value
+        chunks[4] = 4000u64;  // Valid 16-bit value
+        chunks[5] = 5000u64;  // Valid 16-bit value
+        chunks[6] = 6000u64;  // Valid 16-bit value
+        chunks[7] = 7000u64;  // Valid 16-bit value
+
+        let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
+
+        // Create a valid range proof for 32-bit chunks
+        let (proof_32bit, commitments) = create_range_proof_with_bit_size(&chunks, &randomness, 32);
+
+        // Create a confidential balance using the commitments from the 32-bit proof
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            encrypted_chunks[i] = EncryptedChunk {
+                amount: commitments[i]
+                    .decompress()
+                    .expect("Valid commitment"),
+                handle: RistrettoPoint::identity(),
+            };
+        }
+        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+
+        // Verification should fail because the proof is for 32-bit chunks
+        // but verify_new_balance_range_proof expects 16-bit chunks
+        let verify_result = verify_new_balance_range_proof(&confidential_balance, &proof_32bit);
+        assert!(
+            verify_result.is_err(),
+            "Proof verification should have failed for 32-bit proof when expecting 16-bit proof"
+        );
+    }
+
+    #[test]
+    fn test_verify_amount_with_chunk_over_16_bits_fails() {
+        use curve25519_dalek::ristretto::RistrettoPoint;
+
+        // Create chunks where one chunk has a value > 2^16-1
+        // We'll use values that fit in 32 bits but not 16 bits
+        let mut chunks = [0u64; AMOUNT_CHUNKS];
+        chunks[0] = 1000u64;  // Valid 16-bit value
+        chunks[1] = 80000u64; // Over 16-bit limit (80000 > 65535)
+        chunks[2] = 3000u64;  // Valid 16-bit value
+        chunks[3] = 4000u64;  // Valid 16-bit value
+
+        let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
+
+        // Create a valid range proof for 32-bit chunks
+        let (proof_32bit, commitments) = create_range_proof_with_bit_size(&chunks, &randomness, 32);
+
+        // Create a confidential amount using the commitments from the 32-bit proof
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            encrypted_chunks[i] = EncryptedChunk {
+                amount: commitments[i]
+                    .decompress()
+                    .expect("Valid commitment"),
+                handle: RistrettoPoint::identity(),
+            };
+        }
+        let confidential_amount = ConfidentialAmount(encrypted_chunks);
+
+        // Verification should fail because the proof is for 32-bit chunks
+        // but verify_transfer_amount_range_proof expects 16-bit chunks
+        let verify_result = verify_transfer_amount_range_proof(&confidential_amount, &proof_32bit);
+        assert!(
+            verify_result.is_err(),
+            "Proof verification should have failed for 32-bit proof when expecting 16-bit proof"
+        );
+    }
+
+    #[test]
+    fn test_verify_balance_with_max_valid_chunks() {
+        // Create a balance where all chunks are at the maximum valid value (2^16-1 = 65535)
+        let max_chunk_value = 65535u16; // 2^16 - 1
+        let balance = (max_chunk_value as u128) * 0x0001000100010001000100010001u128; // All chunks are 0xFFFF
+        
+        let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
+        let result = prove_new_balance_range(balance, &randomness);
+
+        // Create a confidential balance using the valid proof
+        let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
+
+        // Verification should succeed because all chunks are exactly at the limit
+        let verify_result = verify_new_balance_range_proof(&confidential_balance, &result.proof);
+        assert!(
+            verify_result.is_ok(),
+            "Proof verification should succeed for chunks at max valid value: {:?}",
+            verify_result
+        );
+    }
+
+    #[test]
+    fn test_verify_amount_with_max_valid_chunks() {
+        // Create an amount where all chunks are at the maximum valid value (2^16-1 = 65535)
+        let max_chunk_value = 65535u16; // 2^16 - 1
+        let amount = (max_chunk_value as u64) * 0x000100010001u64; // All chunks are 0xFFFF
+        
+        let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
+        let result = prove_transfer_amount_range(amount, &randomness);
+
+        // Create a confidential amount using the valid proof
+        let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(amount);
+
+        // Verification should succeed because all chunks are exactly at the limit
+        let verify_result = verify_transfer_amount_range_proof(&confidential_amount, &result.proof);
+        assert!(
+            verify_result.is_ok(),
+            "Proof verification should succeed for chunks at max valid value: {:?}",
+            verify_result
+        );
+    }
+
+    #[test]
+    fn test_verify_with_manipulated_commitments_fails() {
+        use curve25519_dalek::ristretto::RistrettoPoint;
+        use rand::rngs::OsRng;
+
+        // Create a proof for a valid balance
+        let balance = 0x123456789ABCDEFu128;
+        let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
+        let result = prove_new_balance_range(balance, &randomness);
+
+        // Create a confidential balance with completely different random commitments
+        // that don't correspond to the proof
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            // Create random commitments that have no relation to the proof
+            let random_scalar = Scalar::random(&mut OsRng);
+            encrypted_chunks[i] = EncryptedChunk {
+                amount: arith::basepoint_mul(&random_scalar),
+                handle: RistrettoPoint::identity(),
+            };
+        }
+        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+
+        // Verification should fail because the commitments don't match the proof
+        let verify_result = verify_new_balance_range_proof(&confidential_balance, &result.proof);
+        assert!(
+            verify_result.is_err(),
+            "Proof verification should have failed for manipulated commitments"
+        );
+
+        // Similarly test for amount
+        let amount = 0x123456789ABCDEFu64;
+        let amount_randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
+        let amount_result = prove_transfer_amount_range(amount, &amount_randomness);
+
+        // Create a confidential amount with manipulated commitments
+        let mut amount_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            let random_scalar = Scalar::random(&mut OsRng);
+            amount_chunks[i] = EncryptedChunk {
+                amount: arith::basepoint_mul(&random_scalar),
+                handle: RistrettoPoint::identity(),
+            };
+        }
+        let confidential_amount = ConfidentialAmount(amount_chunks);
+
+        // Verification should fail
+        let amount_verify_result = verify_transfer_amount_range_proof(&confidential_amount, &amount_result.proof);
+        assert!(
+            amount_verify_result.is_err(),
+            "Proof verification should have failed for manipulated amount commitments"
         );
     }
 }
