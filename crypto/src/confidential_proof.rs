@@ -27,13 +27,8 @@ pub struct AmountRangeProofResult {
 // Max bitsize for range proofs
 const RANGEPROOF_GENS_CAPACITY: usize = 64;
 
-// TODO: Maybe this should be a parameter to these functions instead of being
-// hardcoded here? It would still need to be hardcoded *somewhere* though.
+// Label to use for domain separation in bulletproofs transcripts
 const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
-
-// TODO: I'm writing these range proofs to prove that chunks are in the range
-// [0, 2^16). Is that upper bound right? Should it be up to 2^32? Or can we
-// assume all chunks are normalized to 16 bits?
 
 // Generic helper function to create range proofs for chunked values
 fn prove_range_generic<const N: usize>(
@@ -47,7 +42,8 @@ fn prove_range_generic<const N: usize>(
     // Create transcript with domain separation
     let mut transcript = Transcript::new(BULLETPROOFS_DST);
 
-    // Create the batched range proof for all chunks, each proving value is in [0, 2^16)
+    // Create the batched range proof for all chunks, each proving value is in
+    // [0, 2^16)
     let (proof, commitments) = RangeProof::prove_multiple(
         &bp_gens,
         &pc_gens,
@@ -119,12 +115,6 @@ fn chunk_u64(value: u64) -> [u64; 4] {
     chunk_value::<4>(value as u128)
 }
 
-// TODO: Update this to return the commitments as well. `assert!` that the
-// commitments match what's expected at the call sites. Can always remove the
-// asserts and extra return value later.
-// TODO: Once the above ^^ is done, can update the tests to assert the value.
-// Can also update the tests to check random values as we'll have the
-// commitments to use.
 pub fn prove_new_balance_range(
     new_balance: u128,
     randomness: &[Scalar; BALANCE_CHUNKS],
