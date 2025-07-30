@@ -25,11 +25,11 @@ const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
 // only real difference between these proofs is the number of chunks. Maybe we
 // can extract some common helper functions here.
 
-// Chunks a u128 value into 8 16-bit chunks. For compatibility with the
-// bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_u128(value: u128) -> [u64; 8] {
-    let mut chunks = [0u64; 8];
-    for i in 0..8 {
+// Generic function to chunk a value into N 16-bit chunks.
+// For compatibility with the bulletproofs library, this extends each chunk to 64 bits.
+fn chunk_value<const N: usize>(value: u128) -> [u64; N] {
+    let mut chunks = [0u64; N];
+    for i in 0..N {
         let masked = (value >> (i * 16)) & 0xFFFF;
         assert!(masked <= u16::MAX as u128, "Chunk exceeds u16 max");
         chunks[i] = masked as u64;
@@ -37,16 +37,16 @@ fn chunk_u128(value: u128) -> [u64; 8] {
     chunks
 }
 
+// Chunks a u128 value into 8 16-bit chunks. For compatibility with the
+// bulletproofs library, this extends each chunk to 64 bits.
+fn chunk_u128(value: u128) -> [u64; 8] {
+    chunk_value::<8>(value)
+}
+
 // Chunks a u64 value into 4 16-bit chunks. For compatibility with the
 // bulletproofs library, this extends each chunk to 64 bits.
 fn chunk_u64(value: u64) -> [u64; 4] {
-    let mut chunks = [0u64; 4];
-    for i in 0..4 {
-        let masked = (value >> (i * 16)) & 0xFFFF;
-        assert!(masked <= u16::MAX as u64, "Chunk exceeds u16 max");
-        chunks[i] = masked;
-    }
-    chunks
+    chunk_value::<4>(value as u128)
 }
 
 // TODO: Update this to return the commitments as well. `assert!` that the
