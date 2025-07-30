@@ -141,6 +141,22 @@ pub fn new_scalar_from_pow2(exp: u8) -> Scalar {
     new_scalar_from_u128(1 << exp)
 }
 
+pub fn aggregate_scalar_chunks<const N: usize>(chunks: &[Scalar; N]) -> Scalar {
+    let mut result = Scalar::default();
+    for i in 0..N {
+         result += chunks[i] * new_scalar_from_pow2((i * 16) as u8);
+    }
+    result
+}
+
+pub fn aggregate_point_chunks<const N: usize>(chunks: &[RistrettoPoint; N]) -> RistrettoPoint{
+    let mut res = RistrettoPoint::default();
+    for i in 0..N {
+        res += chunks[i] * new_scalar_from_pow2((i * 16) as u8);
+    }
+    res
+}
+
 
 /// Calculates the linear combination of the provided scalars.
 /// Computes the sum of element-wise products: sum(lhs[i] * rhs[i]) for all i.

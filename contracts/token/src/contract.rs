@@ -8,7 +8,7 @@ use crate::utils::*;
 use stellar_confidential_crypto::{
     proof::{
         verify_withdrawal_proof, CompressedPubkeyBytes, ConfidentialAmount, ConfidentialBalance,
-        NormalizationProofBytes, TransferProofBytes, WithdrawalProofBytes,
+        NormalizationProofBytes, TransferProofBytes, NewBalanceProofBytes,
     },
     ConfidentialAmount,
 };
@@ -109,7 +109,7 @@ impl ConfidentialToken {
         acc: Address,
         amt: u64,
         new_balance: ConfidentialBalance,
-        proof: WithdrawalProofBytes,
+        proof: NewBalanceProofBytes,
     ) {
         // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
         let mut token_ext = read_token_confidential_ext(e);
