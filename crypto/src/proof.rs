@@ -2,7 +2,7 @@ use std::usize;
 
 use crate::{
     arith::{
-        basepoint, bytes_to_point, bytes_to_scalar, hash_to_point_base, new_scalar_from_pow2, new_scalar_from_sha2_512, new_scalar_from_u64
+        basepoint, bytes_to_point, bytes_to_scalar, hash_to_point_base, new_scalar_from_pow2, new_scalar_from_sha2_512, new_scalar_from_u64, point_to_bytes
     },
     confidential_balance::*,
 };
@@ -31,6 +31,12 @@ pub enum Error {
 #[derive(Debug, Clone)]
 pub struct ScalarBytes(pub BytesN<32>);
 
+impl ScalarBytes {
+    pub fn from_scalar(s: &Scalar, e: &Env) -> ScalarBytes {
+        ScalarBytes(BytesN::from_array(e, &s.to_bytes()))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RangeProofBytes(Bytes);
 
@@ -40,6 +46,10 @@ pub struct CompressedPubkeyBytes(BytesN<32>);
 impl CompressedPubkeyBytes {
     pub fn to_point(&self) -> RistrettoPoint {
         bytes_to_point(&self.0.to_array())
+    }
+
+    pub fn from_point(e: &Env, pt: &RistrettoPoint) -> Self {
+        CompressedPubkeyBytes(BytesN::from_array(e, &point_to_bytes(&pt)))
     }
 }
 
@@ -280,11 +290,28 @@ impl WithdrawalSigmaProofXs {
 
         Ok(Self { x1, x2, x3s, x4s })
     }
+
+    pub fn to_bytes(&self, e: &Env) -> WithdrawalSigmaProofXsBytes {
+        let x1 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x1)));
+        let x2 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x2)));
+
+        let mut x3s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x3s[i]))));
+        }
+
+        let mut x4s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x4s[i]))));
+        }
+
+        WithdrawalSigmaProofXsBytes { x1, x2, x3s, x4s }
+    }
 }
 
 impl WithdrawalSigmaProofAlphas {
     pub fn from_bytes(alphas: &WithdrawalSigmaProofAlphasBytes) -> Result<Self, Error> {
-        let mut a1s = [Scalar::from(0u64); BALANCE_CHUNKS];
+        let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
         assert_eq!(alphas.a1s.len(), BALANCE_CHUNKS as u32);
         (0..BALANCE_CHUNKS).for_each(|i| {
             let a = alphas.a1s.get(i as u32).unwrap();
@@ -295,7 +322,7 @@ impl WithdrawalSigmaProofAlphas {
         let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
         let a3 = bytes_to_scalar(&alphas.a3.0.to_array());
 
-        let mut a4s = [Scalar::from(0u64); BALANCE_CHUNKS];
+        let mut a4s = [Scalar::ZERO; BALANCE_CHUNKS];
         assert_eq!(alphas.a4s.len(), BALANCE_CHUNKS as u32);
         (0..BALANCE_CHUNKS).for_each(|i| {
             let a = alphas.a4s.get(i as u32).unwrap();
@@ -304,6 +331,23 @@ impl WithdrawalSigmaProofAlphas {
         });
 
         Ok(Self { a1s, a2, a3, a4s })
+    }
+
+    pub fn to_bytes(&self, e: &Env) -> WithdrawalSigmaProofAlphasBytes {
+        let mut a1s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            a1s.push_back(ScalarBytes::from_scalar(&self.a1s[i], e));
+        }
+
+        let a2 = ScalarBytes::from_scalar(&self.a2, e);
+        let a3 = ScalarBytes::from_scalar(&self.a3, e);
+
+        let mut a4s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            a4s.push_back(ScalarBytes::from_scalar(&self.a4s[i], e));
+        }
+
+        WithdrawalSigmaProofAlphasBytes { a1s, a2, a3, a4s }
     }
 }
 
@@ -330,11 +374,28 @@ impl NormalizationSigmaProofXs {
 
         Ok(Self { x1, x2, x3s, x4s })
     }
+
+    pub fn to_bytes(&self, e: &Env) -> NormalizationSigmaProofXsBytes {
+        let x1 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x1)));
+        let x2 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x2)));
+
+        let mut x3s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x3s[i]))));
+        }
+
+        let mut x4s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x4s[i]))));
+        }
+
+        NormalizationSigmaProofXsBytes { x1, x2, x3s, x4s }
+    }
 }
 
 impl NormalizationSigmaProofAlphas {
     pub fn from_bytes(alphas: &NormalizationSigmaProofAlphasBytes) -> Result<Self, Error> {
-        let mut a1s = [Scalar::from(0u64); BALANCE_CHUNKS];
+        let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
         assert_eq!(alphas.a1s.len(), BALANCE_CHUNKS as u32);
         (0..BALANCE_CHUNKS).for_each(|i| {
             let a = alphas.a1s.get(i as u32).unwrap();
@@ -345,7 +406,7 @@ impl NormalizationSigmaProofAlphas {
         let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
         let a3 = bytes_to_scalar(&alphas.a3.0.to_array());
 
-        let mut a4s = [Scalar::from(0u64); BALANCE_CHUNKS];
+        let mut a4s = [Scalar::ZERO; BALANCE_CHUNKS];
         assert_eq!(alphas.a4s.len(), BALANCE_CHUNKS as u32);
         (0..BALANCE_CHUNKS).for_each(|i| {
             let a = alphas.a4s.get(i as u32).unwrap();
@@ -354,6 +415,23 @@ impl NormalizationSigmaProofAlphas {
         });
 
         Ok(Self { a1s, a2, a3, a4s })
+    }
+
+    pub fn to_bytes(&self, e: &Env) -> NormalizationSigmaProofAlphasBytes {
+        let mut a1s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            a1s.push_back(ScalarBytes::from_scalar(&self.a1s[i], e));
+        }
+
+        let a2 = ScalarBytes::from_scalar(&self.a2, e);
+        let a3 = ScalarBytes::from_scalar(&self.a3, e);
+
+        let mut a4s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            a4s.push_back(ScalarBytes::from_scalar(&self.a4s[i], e));
+        }
+
+        NormalizationSigmaProofAlphasBytes { a1s, a2, a3, a4s }
     }
 }
 
@@ -422,11 +500,58 @@ impl TransferSigmaProofXs {
             x8s,
         })
     }
+
+    pub fn to_bytes(&self, e: &Env) -> TransferSigmaProofXsBytes {
+        let x1 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x1)));
+
+        let mut x2s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            x2s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x2s[i]))));
+        }
+
+        let mut x3s = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x3s[i]))));
+        }
+
+        let mut x4s = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x4s[i]))));
+        }
+
+        let x5 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x5)));
+
+        let mut x6s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            x6s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x6s[i]))));
+        }
+
+        let mut x7s = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            x7s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x7s[i]))));
+        }
+
+        let mut x8s = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            x8s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x8s[i]))));
+        }
+
+        TransferSigmaProofXsBytes {
+            x1,
+            x2s,
+            x3s,
+            x4s,
+            x5,
+            x6s,
+            x7s,
+            x8s,
+        }
+    }
 }
 
 impl TransferSigmaProofAlphas {
     pub fn from_bytes(alphas: &TransferSigmaProofAlphasBytes) -> Result<Self, Error> {
-        let mut a1s = [Scalar::from(0u64); BALANCE_CHUNKS];
+        let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
         assert_eq!(alphas.a1s.len(), BALANCE_CHUNKS as u32);
         (0..BALANCE_CHUNKS).for_each(|i| {
             let a = alphas.a1s.get(i as u32).unwrap();
@@ -436,7 +561,7 @@ impl TransferSigmaProofAlphas {
 
         let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
 
-        let mut a3s = [Scalar::from(0u64); AMOUNT_CHUNKS];
+        let mut a3s = [Scalar::ZERO; AMOUNT_CHUNKS];
         assert_eq!(alphas.a3s.len(), AMOUNT_CHUNKS as u32);
         (0..AMOUNT_CHUNKS).for_each(|i| {
             let a = alphas.a3s.get(i as u32).unwrap();
@@ -444,7 +569,7 @@ impl TransferSigmaProofAlphas {
             a3s[i] = scalar;
         });
 
-        let mut a4s = [Scalar::from(0u64); AMOUNT_CHUNKS];
+        let mut a4s = [Scalar::ZERO; AMOUNT_CHUNKS];
         assert_eq!(alphas.a4s.len(), AMOUNT_CHUNKS as u32);
         (0..AMOUNT_CHUNKS).for_each(|i| {
             let a = alphas.a4s.get(i as u32).unwrap();
@@ -454,7 +579,7 @@ impl TransferSigmaProofAlphas {
 
         let a5 = bytes_to_scalar(&alphas.a5.0.to_array());
 
-        let mut a6s = [Scalar::from(0u64); BALANCE_CHUNKS];
+        let mut a6s = [Scalar::ZERO; BALANCE_CHUNKS];
         assert_eq!(alphas.a6s.len(), BALANCE_CHUNKS as u32);
         (0..BALANCE_CHUNKS).for_each(|i| {
             let a = alphas.a6s.get(i as u32).unwrap();
@@ -470,6 +595,41 @@ impl TransferSigmaProofAlphas {
             a5,
             a6s,
         })
+    }
+
+    pub fn to_bytes(&self, e: &Env) -> TransferSigmaProofAlphasBytes {
+        let mut a1s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            a1s.push_back(ScalarBytes::from_scalar(&self.a1s[i], e));
+        }
+
+        let a2 = ScalarBytes::from_scalar(&self.a2, e);
+
+        let mut a3s = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            a3s.push_back(ScalarBytes::from_scalar(&self.a3s[i], e));
+        }
+
+        let mut a4s = Vec::new(e);
+        for i in 0..AMOUNT_CHUNKS {
+            a4s.push_back(ScalarBytes::from_scalar(&self.a4s[i], e));
+        }
+
+        let a5 = ScalarBytes::from_scalar(&self.a5, e);
+
+        let mut a6s = Vec::new(e);
+        for i in 0..BALANCE_CHUNKS {
+            a6s.push_back(ScalarBytes::from_scalar(&self.a6s[i], e));
+        }
+
+        TransferSigmaProofAlphasBytes {
+            a1s,
+            a2,
+            a3s,
+            a4s,
+            a5,
+            a6s,
+        }
     }
 }
 
@@ -1147,16 +1307,6 @@ fn verify_transfer_amount_range_proof(
     Ok(())
 }
 
-//
-// Friend public functions
-//
-
-/// Returns the number of range proofs in the provided `WithdrawalProof`.
-/// Used in the `confidential_asset` module to validate input parameters of the `confidential_transfer` function.
-pub(crate) fn auditors_count_in_transfer_proof(proof: &TransferProofBytes) -> u64 {
-    proof.sigma_proof.xs.x7s.len() as u64
-}
-
 /// Derives the Fiat-Shamir challenge for the `NormalizationSigmaProof`.
 fn fiat_shamir_normalization_sigma_proof_challenge(
     e: &Env,
@@ -1274,30 +1424,198 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     ScalarBytes(bn)
 }
 
-/// Calculates the product of the provided scalars.
-fn scalar_mul_3(
-    scalar1: &ScalarBytes,
-    scalar2: &ScalarBytes,
-    scalar3: &ScalarBytes,
-) -> ScalarBytes {
-    let mut result = *scalar1;
 
-    scalar_mul_assign(&mut result, scalar2);
-    scalar_mul_assign(&mut result, scalar3);
+#[cfg(test)]
+pub mod testutils {
+    use super::*;
+    use crate::{arith::{basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub}, confidential_balance::testutils::generate_balance_randomness};
+    use rand::rngs::OsRng;
 
-    result
-}
-
-/// Calculates the linear combination of the provided scalars.
-fn scalar_linear_combination(lhs: &[ScalarBytes], rhs: &[ScalarBytes]) -> ScalarBytes {
-    let mut result = scalar_zero();
-
-    for (l, r) in lhs.iter().zip(rhs.iter()) {
-        scalar_add_assign(&mut result, &scalar_mul(l, r));
+    pub struct NormalizationSigmaProofRandomness {
+        pub k1s: [Scalar; BALANCE_CHUNKS], // hides the unencrypted amount chunks
+        pub k2: Scalar,       // hides dk
+        pub k3: Scalar,       // hides dk^-1
+        pub k4s: [Scalar; BALANCE_CHUNKS], // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
+    }
+    pub struct WithdrawalSigmaProofRandomness {
+        // unencrypted amount chunks
+        pub k1s: [Scalar; BALANCE_CHUNKS],
+        // dk
+        pub k2: Scalar,
+        // dk^-1
+        pub k3: Scalar,
+        // encryption randomness
+        pub k4s: [Scalar; BALANCE_CHUNKS],
+    }
+    pub struct TransferSigmaProofRandomness {
+        pub k1s: [Scalar; BALANCE_CHUNKS], // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
+        pub k2: Scalar,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
+        pub k3s: [Scalar; AMOUNT_CHUNKS], // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
+        pub k4s: [Scalar; AMOUNT_CHUNKS], // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
+        pub k5: Scalar,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
+        pub k6s: [Scalar; BALANCE_CHUNKS], // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
     }
 
-    result
+    impl NormalizationSigmaProofRandomness {
+        fn generate() -> Self {
+            let mut k1s = [Scalar::ZERO; BALANCE_CHUNKS];
+            for i in 0..BALANCE_CHUNKS {
+                k1s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            let mut k4s = [Scalar::ZERO; BALANCE_CHUNKS];
+            for i in 0..BALANCE_CHUNKS {
+                k4s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            Self {
+                k1s,
+                k2: Scalar::random(&mut OsRng),
+                k3: Scalar::random(&mut OsRng),
+                k4s,
+            }
+        }
+    }
+    impl WithdrawalSigmaProofRandomness {
+        fn generate() -> Self {
+            let mut k1s = [Scalar::ZERO; BALANCE_CHUNKS];
+            for i in 0..BALANCE_CHUNKS {
+                k1s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            let mut k4s = [Scalar::ZERO; BALANCE_CHUNKS];
+            for i in 0..BALANCE_CHUNKS {
+                k4s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            Self {
+                k1s,
+                k2: Scalar::random(&mut OsRng),
+                k3: Scalar::random(&mut OsRng),
+                k4s,
+            }
+        }
+    }
+    impl TransferSigmaProofRandomness {
+        fn generate() -> Self {
+            let mut k1s = [Scalar::ZERO; BALANCE_CHUNKS];
+            for i in 0..BALANCE_CHUNKS {
+                k1s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            let mut k3s = [Scalar::ZERO; AMOUNT_CHUNKS];
+            for i in 0..AMOUNT_CHUNKS {
+                k3s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            let mut k4s = [Scalar::ZERO; AMOUNT_CHUNKS];
+            for i in 0..AMOUNT_CHUNKS {
+                k4s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            let mut k6s = [Scalar::ZERO; BALANCE_CHUNKS];
+            for i in 0..BALANCE_CHUNKS {
+                k6s[i] = Scalar::random(&mut OsRng);
+            }
+            
+            Self {
+                k1s,
+                k2: Scalar::random(&mut OsRng),
+                k3s,
+                k4s,
+                k5: Scalar::random(&mut OsRng),
+                k6s,
+            }
+        }
+    }
+
+    /// Proves the withdrawal operation.
+    fn prove_withdrawal(
+        dk: &Scalar,
+        ek: &RistrettoPoint,
+        amount: u64,
+        new_balance_u128: u128,
+        current_balance: &ConfidentialBalance,
+    ) -> (WithdrawalProofBytes, ConfidentialBalanceBytes) {
+        let new_balance_r = generate_balance_randomness();
+        let new_balance = ConfidentialBalance::new_balance_from_u128(new_balance_u128, &new_balance_r, &ek);
+
+        let sigma_r = WithdrawalSigmaProofRandomness::generate();
+
+        let zkrp_new_balance = prove_new_balance_range(new_balance_u128, &new_balance_r);
+
+        // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
+        let scalar_g = aggregate_scalar_chunks(&sigma_r.k1s);
+        let mut x1 = basepoint_mul(&scalar_g);
+        let curr_ds = current_balance.get_decryption_handles();
+        x1 += point_mul(&aggregate_point_chunks(&curr_ds), &sigma_r.k2);
+
+        // X₂ = κ₃·H
+        let x2 = point_mul(&hash_to_point_base(), &sigma_r.k3);
+
+        // X₃ᵢ = κ₁ᵢ·G + κ₄ᵢ·H
+        let mut x3s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            x3s[i] = basepoint_mul(&sigma_r.k1s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k4s[i]);
+        }
+
+        // X₄ᵢ = κ₄ᵢ·P
+        let mut x4s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            x4s[i] = point_mul(&ek, &sigma_r.k4s[i])
+        }
+
+        let proof_xs = WithdrawalSigmaProofXs {
+            x1,
+            x2,
+            x3s,
+            x4s
+        };
+
+        let e = Env::default();
+        let proof_xs_bytes = proof_xs.to_bytes(&e);
+
+        let rho = fiat_shamir_withdrawal_sigma_proof_challenge(
+            &CompressedPubkeyBytes::from_point(&e, ek),
+            amount,
+            &current_balance.to_env_bytes(&e),
+            &proof_xs_bytes,
+        );
+
+        // create the commitments for each withness
+        
+        // a₁ᵢ = κ₁ᵢ - ρ·bᵢ
+        let new_amount_chunks = split_into_chunks_u128(new_balance_u128);
+        let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            a1s[i] = sigma_r.k1s[i] - rho * new_amount_chunks[i];
+        }
+        // a₂ = κ₂ - ρ·dk
+        let a2 = scalar_sub(&sigma_r.k2, &scalar_mul(&rho, dk));
+        // a₃ = κ₃ - ρ·dk^(-1)
+        let a3 = scalar_sub(&sigma_r.k3, &scalar_mul(&rho, &scalar_invert(dk)));
+        // a₄ᵢ = κ₄ᵢ - ρ·rᵢ
+        let mut a4s = [Scalar::ZERO; BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            a4s[i] = scalar_sub(&sigma_r.k4s[i], &scalar_mul(&rho, &new_balance_r[i]));
+        }
+        let alphas = WithdrawalSigmaProofAlphas{ a1s, a2, a3, a4s };
+
+        (
+            WithdrawalProofBytes {
+                sigma_proof: WithdrawalSigmaProofBytes {
+                    xs: proof_xs_bytes,
+                    alphas: alphas.to_bytes(&e),
+                },
+                zkrp_new_balance,
+            },
+            new_balance.to_env_bytes(&e),
+        )
+    }
+
 }
+
+
 
 #[cfg(test)]
 mod tests {
@@ -1434,103 +1752,6 @@ mod tests {
                 sigma_proof: NormalizationSigmaProofBytes {
                     xs: proof_xs,
                     alphas: NormalizationSigmaProofAlphasBytes { a1s, a2, a3, a4s },
-                },
-                zkrp_new_balance,
-            },
-            new_balance,
-        )
-    }
-
-    /// Proves the withdrawal operation.
-    fn prove_withdrawal(
-        dk: &ScalarBytes,
-        ek: &CompressedPubkeyBytes,
-        amount: u64,
-        new_amount: u128,
-        current_balance: &ConfidentialBalanceBytes,
-    ) -> (WithdrawalProofBytes, ConfidentialBalanceBytes) {
-        let new_balance_r = generate_balance_randomness();
-        let new_balance = new_actual_balance_from_u128(new_amount, &new_balance_r, ek);
-
-        let new_balance_r = balance_randomness_as_scalars(&new_balance_r);
-
-        let sigma_r = generate_withdrawal_sigma_proof_randomness();
-
-        let zkrp_new_balance = prove_new_balance_range(new_amount, &new_balance_r);
-
-        // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
-        let x1 = basepoint_mul(&scalar_linear_combination(
-            &sigma_r.x1s,
-            &(0..8)
-                .map(|i| new_scalar_from_pow2(i * 16))
-                .collect::<Vec<_>>(),
-        ));
-        point_add_assign(
-            &mut x1,
-            &point_mul(
-                &multi_scalar_mul(
-                    &balance_to_points_d(current_balance),
-                    &(0..8)
-                        .map(|i| new_scalar_from_pow2(i * 16))
-                        .collect::<Vec<_>>(),
-                )
-                .unwrap(),
-                &sigma_r.x2,
-            ),
-        );
-        // X₂ = κ₃·H
-        let x2 = point_mul(&hash_to_point_base(), &sigma_r.x3);
-        // X₃ᵢ = κ₁ᵢ·G + κ₄ᵢ·H
-        let x3s = (0..8)
-            .map(|i| {
-                let mut x3i = basepoint_mul(&sigma_r.x1s[i]);
-                point_add_assign(&mut x3i, &point_mul(&hash_to_point_base(), &sigma_r.x4s[i]));
-                x3i
-            })
-            .collect::<Vec<_>>();
-        // X₄ᵢ = κ₄ᵢ·P
-        let x4s = (0..8)
-            .map(|i| point_mul(&pubkey_to_point(ek).unwrap(), &sigma_r.x4s[i]))
-            .collect::<Vec<_>>();
-
-        let proof_xs = WithdrawalSigmaProofXsBytes {
-            x1: point_compress(&x1),
-            x2: point_compress(&x2),
-            x3s: x3s.iter().map(|x| point_compress(x)).collect(),
-            x4s: x4s.iter().map(|x| point_compress(x)).collect(),
-        };
-
-        let amount_chunks = split_into_chunks_u64(amount);
-
-        let rho = fiat_shamir_withdrawal_sigma_proof_challenge(
-            ek,
-            &amount_chunks,
-            current_balance,
-            &proof_xs,
-        );
-
-        // below parts a1-a4 are idential to the normalization proof
-
-        let new_amount_chunks = split_into_chunks_u128(new_amount);
-
-        // a₁ᵢ = κ₁ᵢ - ρ·bᵢ
-        let a1s = (0..8)
-            .map(|i| scalar_sub(&sigma_r.x1s[i], &scalar_mul(&rho, &new_amount_chunks[i])))
-            .collect::<Vec<_>>();
-        // a₂ = κ₂ - ρ·dk
-        let a2 = scalar_sub(&sigma_r.x2, &scalar_mul(&rho, dk));
-        // a₃ = κ₃ - ρ·dk^(-1)
-        let a3 = scalar_sub(&sigma_r.x3, &scalar_mul(&rho, &scalar_invert(dk).unwrap()));
-        // a₄ᵢ = κ₄ᵢ - ρ·rᵢ
-        let a4s = (0..8)
-            .map(|i| scalar_sub(&sigma_r.x4s[i], &scalar_mul(&rho, &new_balance_r[i])))
-            .collect::<Vec<_>>();
-
-        (
-            WithdrawalProofBytes {
-                sigma_proof: WithdrawalSigmaProofBytes {
-                    xs: proof_xs,
-                    alphas: WithdrawalSigmaProofAlphasBytes { a1s, a2, a3, a4s },
                 },
                 zkrp_new_balance,
             },
@@ -1744,86 +1965,5 @@ mod tests {
             recipient_amount,
             auditor_amounts,
         )
-    }
-
-    // Additional placeholder functions needed for the test functions
-    fn generate_balance_randomness() -> BalanceRandomness {
-        unimplemented!()
-    }
-    fn new_actual_balance_from_u128(
-        _amount: u128,
-        _randomness: &BalanceRandomness,
-        _ek: &CompressedPubkeyBytes,
-    ) -> ConfidentialBalanceBytes {
-        unimplemented!()
-    }
-    fn balance_randomness_as_scalars(_randomness: &BalanceRandomness) -> Vec<ScalarBytes> {
-        unimplemented!()
-    }
-    fn generate_normalization_sigma_proof_randomness() -> NormalizationSigmaProofRandomness {
-        unimplemented!()
-    }
-    fn prove_new_balance_range(_amount: u128, _randomness: &[ScalarBytes]) -> RangeProofBytes {
-        unimplemented!()
-    }
-    fn basepoint_mul(_scalar: &ScalarBytes) -> Point {
-        unimplemented!()
-    }
-    fn point_add_assign(_point: &mut Point, _other: &Point) {
-        unimplemented!()
-    }
-    fn point_mul(_point: &Point, _scalar: &ScalarBytes) -> Point {
-        unimplemented!()
-    }
-    fn split_into_chunks_u128(_amount: u128) -> Vec<ScalarBytes> {
-        unimplemented!()
-    }
-    fn scalar_sub(_lhs: &ScalarBytes, _rhs: &ScalarBytes) -> ScalarBytes {
-        unimplemented!()
-    }
-    fn scalar_invert(_scalar: &ScalarBytes) -> Option<ScalarBytes> {
-        unimplemented!()
-    }
-    fn generate_withdrawal_sigma_proof_randomness() -> WithdrawalSigmaProofRandomness {
-        unimplemented!()
-    }
-    fn new_pending_balance_from_u64(
-        _amount: u64,
-        _randomness: &BalanceRandomness,
-        _ek: &CompressedPubkeyBytes,
-    ) -> ConfidentialBalanceBytes {
-        unimplemented!()
-    }
-    fn generate_transfer_sigma_proof_randomness() -> TransferSigmaProofRandomness {
-        unimplemented!()
-    }
-    fn prove_transfer_amount_range(_amount: u64, _randomness: &[ScalarBytes]) -> RangeProofBytes {
-        unimplemented!()
-    }
-    fn point_sub_assign(_point: &mut Point, _other: &Point) {
-        unimplemented!()
-    }
-
-    // Placeholder types for randomness structs
-    pub type BalanceRandomness = Vec<u8>;
-    pub struct NormalizationSigmaProofRandomness {
-        pub x1s: Vec<ScalarBytes>,
-        pub x2: ScalarBytes,
-        pub x3: ScalarBytes,
-        pub x4s: Vec<ScalarBytes>,
-    }
-    pub struct WithdrawalSigmaProofRandomness {
-        pub x1s: Vec<ScalarBytes>,
-        pub x2: ScalarBytes,
-        pub x3: ScalarBytes,
-        pub x4s: Vec<ScalarBytes>,
-    }
-    pub struct TransferSigmaProofRandomness {
-        pub x1s: Vec<ScalarBytes>,
-        pub x2: ScalarBytes,
-        pub x3s: Vec<ScalarBytes>,
-        pub x4s: Vec<ScalarBytes>,
-        pub x5: ScalarBytes,
-        pub x6s: Vec<ScalarBytes>,
     }
 }
