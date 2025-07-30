@@ -704,8 +704,8 @@ pub fn verify_transfer_proof(
     new_balance: &ConfidentialBalanceBytes,
     sender_amount: &ConfidentialBalanceBytes,
     recipient_amount: &ConfidentialBalanceBytes,
-    auditor_eks: &[CompressedPubkeyBytes],
-    auditor_amounts: &[ConfidentialBalanceBytes],
+    auditor_eks: &CompressedPubkeyBytes,
+    auditor_amounts: &ConfidentialBalanceBytes,
     proof: &TransferProofBytes,
 ) -> Result<(), Error> {
     verify_transfer_sigma_proof(
@@ -823,24 +823,22 @@ fn verify_transfer_sigma_proof(
     new_balance: &ConfidentialBalanceBytes,
     sender_amount: &ConfidentialBalanceBytes,
     recipient_amount: &ConfidentialBalanceBytes,
-    auditor_eks: &[CompressedPubkeyBytes],
-    auditor_amounts: &[ConfidentialBalanceBytes],
+    auditor_eks: &CompressedPubkeyBytes,
+    auditor_amounts: &ConfidentialBalanceBytes,
     proof: &TransferSigmaProofBytes,
 ) -> Result<(), Error> {
-    todo!()
-    // let rho = fiat_shamir_transfer_sigma_proof_challenge(
-    //     sender_ek,
-    //     recipient_ek,
-    //     current_balance,
-    //     new_balance,
-    //     sender_amount,
-    //     recipient_amount,
-    //     auditor_eks,
-    //     auditor_amounts,
-    //     &proof.xs,
-    // );
+    let rho = fiat_shamir_transfer_sigma_proof_challenge(
+        sender_ek,
+        recipient_ek,
+        current_balance,
+        new_balance,
+        sender_amount,
+        recipient_amount,
+        auditor_eks,
+        auditor_amounts,
+        &proof.xs,
+    );
 
-    // let gammas = msm_transfer_gammas(&rho, proof.xs.x7s.len());
 
     // let mut scalars_lhs = vec![gammas.g1];
     // scalars_lhs.extend(&gammas.g2s);
@@ -1149,7 +1147,7 @@ fn verify_transfer_sigma_proof(
     // if !point_equals(&lhs, &rhs) {
     //     return Err(Error::SigmaProtocolVerifyFailed);
     // }
-    // Ok(())
+    Ok(())
 }
 
 /// Verifies the validity of the `NewBalanceRangeProof`.
@@ -1226,64 +1224,55 @@ fn fiat_shamir_new_balance_sigma_proof_challenge(
 
 /// Derives the Fiat-Shamir challenge for the `TransferSigmaProof`.
 fn fiat_shamir_transfer_sigma_proof_challenge(
-    e: &Env,
     sender_ek: &CompressedPubkeyBytes,
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
     new_balance: &ConfidentialBalanceBytes,
     sender_amount: &ConfidentialBalanceBytes,
     recipient_amount: &ConfidentialBalanceBytes,
-    auditor_eks: &[CompressedPubkeyBytes],
-    auditor_amounts: &[ConfidentialBalanceBytes],
+    auditor_ek: &CompressedPubkeyBytes,
+    auditor_amount: &ConfidentialBalanceBytes,
     proof_xs: &TransferSigmaProofXsBytes,
-) -> ScalarBytes {
-    todo!()
-    // // rho = H(DST, G, H, P_s, P_r, P_a_{1..n}, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4n}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..30 + 4n})
-    // let mut bytes = FIAT_SHAMIR_TRANSFER_SIGMA_DST.to_vec();
+) -> Scalar {
+    // rho = H(DST, G, H, P_s, P_r, P_a, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..34})
+    let mut bytes = FIAT_SHAMIR_TRANSFER_SIGMA_DST.to_vec();
 
-    // bytes.extend(basepoint().compress().to_bytes());
-    // bytes.extend(hash_to_point_base().compress().to_bytes());
-    // bytes.extend(sender_ek.0.to_array());
-    // bytes.extend(recipient_ek.0.to_array());
-    // for ek in auditor_eks {
-    //     bytes.extend(ek.0.to_array());
-    // }
-    // bytes.extend(current_balance.to_bytes());
-    // bytes.extend(recipient_amount.to_bytes());
-    // for balance in auditor_amounts {
-    //     for EncryptedChunk { amount, handle } in &balance.0 {
-    //         bytes.extend(handle.to_bytes());
-    //     }
-    // }
-    // for chunk in &sender_amount.0 {
-    //     bytes.extend(chunk.handle.to_bytes());
-    // }
-    // bytes.extend(new_balance.to_bytes());
-    // bytes.extend(&proof_xs.x1.to_bytes());
-    // for x in &proof_xs.x2s {
-    //     bytes.extend(x.to_bytes());
-    // }
-    // for x in &proof_xs.x3s {
-    //     bytes.extend(x.to_bytes());
-    // }
-    // for x in &proof_xs.x4s {
-    //     bytes.extend(x.to_bytes());
-    // }
-    // bytes.extend(&proof_xs.x5.to_bytes());
-    // for x in &proof_xs.x6s {
-    //     bytes.extend(x.to_bytes());
-    // }
-    // for xs in &proof_xs.x7s {
-    //     for x in xs {
-    //         bytes.extend(x.to_bytes());
-    //     }
-    // }
-    // for x in &proof_xs.x8s {
-    //     bytes.extend(x.to_bytes());
-    // }
+    bytes.extend(basepoint().compress().to_bytes());
+    bytes.extend(hash_to_point_base().compress().to_bytes());
+    bytes.extend(sender_ek.0.to_array());
+    bytes.extend(recipient_ek.0.to_array());
+    bytes.extend(auditor_ek.0.to_array());
+    bytes.extend(current_balance.to_bytes());
+    bytes.extend(recipient_amount.to_bytes());
+    for EncryptedChunkBytes{ handle, .. } in &auditor_amount.0 {
+        bytes.extend(handle.to_bytes());
+    }
+    for EncryptedChunkBytes{ handle, .. } in &sender_amount.0 {
+        bytes.extend(handle.to_bytes());
+    }
+    bytes.extend(new_balance.to_bytes());
+    bytes.extend(&proof_xs.x1.to_bytes());
+    for x in &proof_xs.x2s {
+        bytes.extend(x.to_bytes());
+    }
+    for x in &proof_xs.x3s {
+        bytes.extend(x.to_bytes());
+    }
+    for x in &proof_xs.x4s {
+        bytes.extend(x.to_bytes());
+    }
+    bytes.extend(&proof_xs.x5.to_bytes());
+    for x in &proof_xs.x6s {
+        bytes.extend(x.to_bytes());
+    }
+    for x in &proof_xs.x7s {
+        bytes.extend(x.to_bytes());
+    }
+    for x in &proof_xs.x8s {
+        bytes.extend(x.to_bytes());
+    }
 
-    // let bn = BytesN::<32>::from_array(e, new_scalar_from_sha2_512(&bytes).as_bytes());
-    // ScalarBytes(bn)
+    new_scalar_from_sha2_512(&bytes)
 }
 
 #[cfg(test)]
@@ -1488,13 +1477,16 @@ mod tests {
         let ek = pubkey_from_secret_key(&dk);
 
         {
-            // proper normalization  
+            // correct normalization
             let balance = 100u128;
             let current_balance = ConfidentialBalance::new_balance_from_u128(balance, &generate_balance_randomness(), &ek);
             let (proof, new_balance) = prove_normalization(&env, &dk, &ek, balance, &current_balance);
 
             let res = verify_normalization_proof(&CompressedPubkeyBytes::from_point(&env, &ek), &current_balance.to_env_bytes(&env), &new_balance, &proof);
             assert!(res.is_ok())
+
+            // TODO: add more non-trivial cases
+            // E.g split the balance into non-uniform bits and normalize them again
         }
     }
 

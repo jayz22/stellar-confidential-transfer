@@ -22,8 +22,8 @@ impl CompressedRistrettoBytes {
 #[contracttype]
 #[derive(Debug, Clone)]
 pub struct EncryptedChunkBytes {
-    amount: CompressedRistrettoBytes, // C
-    handle: CompressedRistrettoBytes, // D
+    pub amount: CompressedRistrettoBytes, // C
+    pub handle: CompressedRistrettoBytes, // D
 }
 
 #[contracttype]
@@ -50,8 +50,8 @@ pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
 
 #[derive(Debug, Clone, Copy)]
 pub struct EncryptedChunk {
-    amount: RistrettoPoint, // C
-    handle: RistrettoPoint, // D
+    pub amount: RistrettoPoint, // C
+    pub handle: RistrettoPoint, // D
 }
 
 impl EncryptedChunk {
