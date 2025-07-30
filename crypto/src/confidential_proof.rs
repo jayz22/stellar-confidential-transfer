@@ -6,7 +6,8 @@ use merlin::Transcript;
 use soroban_sdk::{Bytes, Env};
 
 use super::confidential_balance::{
-    ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS, CHUNK_SIZE_BITS,
+    ConfidentialAmount, ConfidentialBalance, EncryptedChunk, AMOUNT_CHUNKS, BALANCE_CHUNKS,
+    CHUNK_SIZE_BITS,
 };
 
 // Result struct for prove_new_balance_range
@@ -135,10 +136,7 @@ pub fn prove_new_balance_range(
     let (proof, commitments) = prove_range_generic(&chunks, randomness);
 
     // Serialize the proof
-    BalanceRangeProofResult {
-        proof,
-        commitments
-    }
+    BalanceRangeProofResult { proof, commitments }
 }
 
 pub fn prove_transfer_amount_range(
@@ -151,10 +149,7 @@ pub fn prove_transfer_amount_range(
     // Use generic helper to create the range proof
     let (proof, commitments) = prove_range_generic(&chunks, randomness);
 
-    AmountRangeProofResult {
-        proof,
-        commitments,
-    }
+    AmountRangeProofResult { proof, commitments }
 }
 
 pub fn verify_new_balance_range_proof(
@@ -192,6 +187,8 @@ pub fn verify_transfer_amount_range_proof(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use curve25519_dalek::traits::Identity;
+    use std::array;
 
     #[test]
     fn test_prove_and_verify_new_balance_range() {
@@ -216,11 +213,13 @@ mod tests {
         );
 
         // Verify that the commitments from the proof match those from the confidential balance
-        let expected_commitments: Vec<CompressedRistretto> = confidential_balance.get_encrypted_balances()
+        let expected_commitments: Vec<CompressedRistretto> = confidential_balance
+            .get_encrypted_balances()
             .iter()
             .map(|point| point.compress())
             .collect();
-        assert_eq!(result.commitments, expected_commitments,
+        assert_eq!(
+            result.commitments, expected_commitments,
             "Commitments from proof do not match expected commitments"
         );
     }
@@ -313,5 +312,100 @@ mod tests {
         // Verification should fail
         let result = verify_transfer_amount_range_proof(&confidential_amount, &invalid_proof);
         assert!(result.is_err(), "Proof verification should have failed");
+    }
+
+    #[test]
+    fn test_prove_and_verify_new_balance_range_with_nonzero_randomness() {
+        use curve25519_dalek::ristretto::RistrettoPoint;
+        use rand::rngs::OsRng;
+
+        // Test with a valid 128-bit balance
+        let balance = 0x123456789ABCDEFu128;
+
+        // Generate nonzero randomness for the proof
+        let randomness = array::from_fn(|_| Scalar::random(&mut OsRng));
+
+        // Create the range proof
+        let result = prove_new_balance_range(balance, &randomness);
+
+        // Create a fake confidential balance using the commitments from the proof
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
+        for i in 0..BALANCE_CHUNKS {
+            encrypted_chunks[i] = EncryptedChunk {
+                amount: result.commitments[i]
+                    .decompress()
+                    .expect("Valid commitment"),
+                // Use identity for handle since it's not used in verification
+                handle: RistrettoPoint::identity(),
+            };
+        }
+        let confidential_balance = ConfidentialBalance(encrypted_chunks);
+
+        // Verify the proof
+        let verify_result = verify_new_balance_range_proof(&confidential_balance, &result.proof);
+        assert!(
+            verify_result.is_ok(),
+            "Proof verification failed: {:?}",
+            verify_result
+        );
+
+        // Verify that the commitments from the proof match those from the confidential balance
+        let expected_commitments: Vec<CompressedRistretto> = confidential_balance
+            .get_encrypted_balances()
+            .iter()
+            .map(|point| point.compress())
+            .collect();
+        assert_eq!(
+            result.commitments, expected_commitments,
+            "Commitments from proof do not match expected commitments"
+        );
+    }
+
+    #[test]
+    fn test_prove_and_verify_transfer_amount_range_with_nonzero_randomness() {
+        use curve25519_dalek::ristretto::RistrettoPoint;
+        use rand::rngs::OsRng;
+
+        // Test with a valid 64-bit amount
+        let amount = 0x123456789ABCDEFu64;
+
+        // Generate nonzero randomness for the proof
+        let randomness = array::from_fn(|_| Scalar::random(&mut OsRng));
+
+        // Create the range proof
+        let result = prove_transfer_amount_range(amount, &randomness);
+
+        // Create a fake confidential amount using the commitments from the proof
+        // The handle values are arbitrary since they're not used in range proof verification
+        let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            encrypted_chunks[i] = EncryptedChunk {
+                amount: result.commitments[i]
+                    .decompress()
+                    .expect("Valid commitment"),
+                // Use identity for handle since it's not used in verification
+                handle: RistrettoPoint::identity(),
+            };
+        }
+        let confidential_amount = ConfidentialAmount(encrypted_chunks);
+
+        // Verify the proof
+        let verify_result = verify_transfer_amount_range_proof(&confidential_amount, &result.proof);
+        assert!(
+            verify_result.is_ok(),
+            "Proof verification failed: {:?}",
+            verify_result
+        );
+
+        // Verify that the commitments from the proof match those from the confidential amount
+        let expected_commitments: Vec<CompressedRistretto> = confidential_amount
+            .get_encrypted_amounts()
+            .iter()
+            .map(|point| point.compress())
+            .collect();
+        assert_eq!(
+            result.commitments, expected_commitments,
+            "Commitments from proof do not match expected commitments"
+        );
     }
 }
