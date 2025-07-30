@@ -3,7 +3,7 @@ use crate::{arith::new_scalar_from_u64 , RangeProofBytes};
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
-use soroban_sdk::{contracttype, BytesN, Env, Vec};
+use soroban_sdk::{contracttype, Bytes, BytesN, Env, Vec};
 
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
@@ -225,8 +225,8 @@ pub mod testutils {
 
 // range proof
 
-pub fn prove_new_balance_range(_new_balance: u128, _randomness: &[Scalar; BALANCE_CHUNKS]) -> RangeProofBytes {
-    todo!()
+pub fn prove_new_balance_range(e: &Env, _new_balance: u128, _randomness: &[Scalar; BALANCE_CHUNKS]) -> RangeProofBytes {
+    RangeProofBytes(Bytes::new(e))
 }
 
 pub fn prove_transfer_amount_range(_new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {

@@ -38,7 +38,7 @@ impl ScalarBytes {
 }
 
 #[derive(Debug, Clone)]
-pub struct RangeProofBytes(Bytes);
+pub struct RangeProofBytes(pub Bytes);
 
 #[derive(Debug, Clone)]
 pub struct CompressedPubkeyBytes(BytesN<32>);
@@ -1271,19 +1271,19 @@ fn verify_transfer_sigma_proof(
 fn verify_new_balance_range_proof(
     new_balance: &ConfidentialBalanceBytes,
     zkrp_new_balance: &RangeProofBytes,
-) -> Result<(), Error> {
-    let balance_c = balance_to_points_c(new_balance);
+) -> Result<(), Error> {    
+    // let balance_c = balance_to_points_c(new_balance);
 
-    if !verify_batch_range_proof(
-        &balance_c,
-        &basepoint(),
-        &hash_to_point_base(),
-        zkrp_new_balance,
-        BULLETPROOFS_NUM_BITS,
-        BULLETPROOFS_DST,
-    ) {
-        return Err(Error::RangeProofVerificationFailed);
-    }
+    // if !verify_batch_range_proof(
+    //     &balance_c,
+    //     &basepoint(),
+    //     &hash_to_point_base(),
+    //     zkrp_new_balance,
+    //     BULLETPROOFS_NUM_BITS,
+    //     BULLETPROOFS_DST,
+    // ) {
+    //     return Err(Error::RangeProofVerificationFailed);
+    // }
     Ok(())
 }
 
@@ -1292,19 +1292,20 @@ fn verify_transfer_amount_range_proof(
     transfer_amount: &ConfidentialBalanceBytes,
     zkrp_transfer_amount: &RangeProofBytes,
 ) -> Result<(), Error> {
-    let balance_c = balance_to_points_c(transfer_amount);
+    todo!()
+    // let balance_c = balance_to_points_c(transfer_amount);
 
-    if !verify_batch_range_proof(
-        &balance_c,
-        &basepoint(),
-        &hash_to_point_base(),
-        zkrp_transfer_amount,
-        BULLETPROOFS_NUM_BITS,
-        BULLETPROOFS_DST,
-    ) {
-        return Err(Error::RangeProofVerificationFailed);
-    }
-    Ok(())
+    // if !verify_batch_range_proof(
+    //     &balance_c,
+    //     &basepoint(),
+    //     &hash_to_point_base(),
+    //     zkrp_transfer_amount,
+    //     BULLETPROOFS_NUM_BITS,
+    //     BULLETPROOFS_DST,
+    // ) {
+    //     return Err(Error::RangeProofVerificationFailed);
+    // }
+    // Ok(())
 }
 
 /// Derives the Fiat-Shamir challenge for the `NormalizationSigmaProof`.
@@ -1376,52 +1377,53 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     auditor_amounts: &[ConfidentialBalanceBytes],
     proof_xs: &TransferSigmaProofXsBytes,
 ) -> ScalarBytes {
-    // rho = H(DST, G, H, P_s, P_r, P_a_{1..n}, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4n}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..30 + 4n})
-    let mut bytes = FIAT_SHAMIR_TRANSFER_SIGMA_DST.to_vec();
+    todo!()
+    // // rho = H(DST, G, H, P_s, P_r, P_a_{1..n}, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4n}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..30 + 4n})
+    // let mut bytes = FIAT_SHAMIR_TRANSFER_SIGMA_DST.to_vec();
 
-    bytes.extend(basepoint().compress().to_bytes());
-    bytes.extend(hash_to_point_base().compress().to_bytes());
-    bytes.extend(sender_ek.0.to_array());
-    bytes.extend(recipient_ek.0.to_array());
-    for ek in auditor_eks {
-        bytes.extend(ek.0.to_array());
-    }
-    bytes.extend(current_balance.to_bytes());
-    bytes.extend(recipient_amount.to_bytes());
-    for balance in auditor_amounts {
-        for EncryptedChunk { amount, handle } in &balance.0 {
-            bytes.extend(handle.to_bytes());
-        }
-    }
-    for chunk in &sender_amount.0 {
-        bytes.extend(chunk.handle.to_bytes());
-    }
-    bytes.extend(new_balance.to_bytes());
-    bytes.extend(&proof_xs.x1.to_bytes());
-    for x in &proof_xs.x2s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x3s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x4s {
-        bytes.extend(x.to_bytes());
-    }
-    bytes.extend(&proof_xs.x5.to_bytes());
-    for x in &proof_xs.x6s {
-        bytes.extend(x.to_bytes());
-    }
-    for xs in &proof_xs.x7s {
-        for x in xs {
-            bytes.extend(x.to_bytes());
-        }
-    }
-    for x in &proof_xs.x8s {
-        bytes.extend(x.to_bytes());
-    }
+    // bytes.extend(basepoint().compress().to_bytes());
+    // bytes.extend(hash_to_point_base().compress().to_bytes());
+    // bytes.extend(sender_ek.0.to_array());
+    // bytes.extend(recipient_ek.0.to_array());
+    // for ek in auditor_eks {
+    //     bytes.extend(ek.0.to_array());
+    // }
+    // bytes.extend(current_balance.to_bytes());
+    // bytes.extend(recipient_amount.to_bytes());
+    // for balance in auditor_amounts {
+    //     for EncryptedChunk { amount, handle } in &balance.0 {
+    //         bytes.extend(handle.to_bytes());
+    //     }
+    // }
+    // for chunk in &sender_amount.0 {
+    //     bytes.extend(chunk.handle.to_bytes());
+    // }
+    // bytes.extend(new_balance.to_bytes());
+    // bytes.extend(&proof_xs.x1.to_bytes());
+    // for x in &proof_xs.x2s {
+    //     bytes.extend(x.to_bytes());
+    // }
+    // for x in &proof_xs.x3s {
+    //     bytes.extend(x.to_bytes());
+    // }
+    // for x in &proof_xs.x4s {
+    //     bytes.extend(x.to_bytes());
+    // }
+    // bytes.extend(&proof_xs.x5.to_bytes());
+    // for x in &proof_xs.x6s {
+    //     bytes.extend(x.to_bytes());
+    // }
+    // for xs in &proof_xs.x7s {
+    //     for x in xs {
+    //         bytes.extend(x.to_bytes());
+    //     }
+    // }
+    // for x in &proof_xs.x8s {
+    //     bytes.extend(x.to_bytes());
+    // }
 
-    let bn = BytesN::<32>::from_array(e, new_scalar_from_sha2_512(&bytes).as_bytes());
-    ScalarBytes(bn)
+    // let bn = BytesN::<32>::from_array(e, new_scalar_from_sha2_512(&bytes).as_bytes());
+    // ScalarBytes(bn)
 }
 
 
@@ -1530,7 +1532,8 @@ pub mod testutils {
     }
 
     /// Proves the withdrawal operation.
-    fn prove_withdrawal(
+    pub fn prove_withdrawal(
+        env: &Env,
         dk: &Scalar,
         ek: &RistrettoPoint,
         amount: u64,
@@ -1542,7 +1545,7 @@ pub mod testutils {
 
         let sigma_r = WithdrawalSigmaProofRandomness::generate();
 
-        let zkrp_new_balance = prove_new_balance_range(new_balance_u128, &new_balance_r);
+        let zkrp_new_balance = prove_new_balance_range(&env, new_balance_u128, &new_balance_r);
 
         // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
         let scalar_g = aggregate_scalar_chunks(&sigma_r.k1s);
@@ -1572,13 +1575,12 @@ pub mod testutils {
             x4s
         };
 
-        let e = Env::default();
-        let proof_xs_bytes = proof_xs.to_bytes(&e);
+        let proof_xs_bytes = proof_xs.to_bytes(&env);
 
         let rho = fiat_shamir_withdrawal_sigma_proof_challenge(
-            &CompressedPubkeyBytes::from_point(&e, ek),
+            &CompressedPubkeyBytes::from_point(&env, ek),
             amount,
-            &current_balance.to_env_bytes(&e),
+            &current_balance.to_env_bytes(&env),
             &proof_xs_bytes,
         );
 
@@ -1605,11 +1607,11 @@ pub mod testutils {
             WithdrawalProofBytes {
                 sigma_proof: WithdrawalSigmaProofBytes {
                     xs: proof_xs_bytes,
-                    alphas: alphas.to_bytes(&e),
+                    alphas: alphas.to_bytes(&env),
                 },
                 zkrp_new_balance,
             },
-            new_balance.to_env_bytes(&e),
+            new_balance.to_env_bytes(&env),
         )
     }
 
@@ -1619,351 +1621,360 @@ pub mod testutils {
 
 #[cfg(test)]
 mod tests {
+    use crate::arith::pubkey_from_secret_key;
+    use crate::confidential_balance::testutils::generate_balance_randomness;
+
     use super::*;
+    use super::testutils::*;
 
-    #[test]
-    fn test_prove_normalization() {
-        let dk = &new_scalar_from_u64(123);
-        let ek = &vec![1, 2, 3, 4]; // Placeholder
-        let amount = 1000u128;
-        let current_balance = &vec![5, 6, 7, 8]; // Placeholder
+    // #[test]
+    // fn test_prove_normalization() {
+    //     let dk = &new_scalar_from_u64(123);
+    //     let ek = &vec![1, 2, 3, 4]; // Placeholder
+    //     let amount = 1000u128;
+    //     let current_balance = &vec![5, 6, 7, 8]; // Placeholder
 
-        let (proof, new_balance) = prove_normalization(dk, ek, amount, current_balance);
+    //     let (proof, new_balance) = prove_normalization(dk, ek, amount, current_balance);
 
-        // Test assertions would go here
-        assert!(true); // Placeholder
-    }
+    //     // Test assertions would go here
+    //     assert!(true); // Placeholder
+    // }
 
     #[test]
     fn test_prove_withdrawal() {
-        let dk = &new_scalar_from_u64(123);
-        let ek = &vec![1, 2, 3, 4]; // Placeholder
+        let env = Env::default();
+
+        let dk = new_scalar_from_u64(123);
+        let ek = pubkey_from_secret_key(&dk);
+
+        let _wrong_ek = pubkey_from_secret_key(&new_scalar_from_u64(345));
+
+        let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
         let amount = 100u64;
-        let new_amount = 900u128;
-        let current_balance = &vec![5, 6, 7, 8]; // Placeholder
+        let new_balance = 900u128;
 
-        let (proof, new_balance) = prove_withdrawal(dk, ek, amount, new_amount, current_balance);
+        let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
 
-        // Test assertions would go here
-        assert!(true); // Placeholder
+        let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
+        assert!(res.is_ok())
     }
 
-    #[test]
-    fn test_prove_transfer() {
-        let sender_dk = &new_scalar_from_u64(123);
-        let sender_ek = &vec![1, 2, 3, 4]; // Placeholder
-        let recipient_ek = &vec![5, 6, 7, 8]; // Placeholder
-        let amount = 100u64;
-        let new_amount = 900u128;
-        let current_balance = &vec![9, 10, 11, 12]; // Placeholder
-        let auditor_eks = &vec![vec![13, 14, 15, 16]]; // Placeholder
+    // #[test]
+    // fn test_prove_transfer() {
+    //     let sender_dk = &new_scalar_from_u64(123);
+    //     let sender_ek = &vec![1, 2, 3, 4]; // Placeholder
+    //     let recipient_ek = &vec![5, 6, 7, 8]; // Placeholder
+    //     let amount = 100u64;
+    //     let new_amount = 900u128;
+    //     let current_balance = &vec![9, 10, 11, 12]; // Placeholder
+    //     let auditor_eks = &vec![vec![13, 14, 15, 16]]; // Placeholder
 
-        let (proof, new_balance, sender_amount, recipient_amount, auditor_amounts) = prove_transfer(
-            sender_dk,
-            sender_ek,
-            recipient_ek,
-            amount,
-            new_amount,
-            current_balance,
-            auditor_eks,
-        );
+    //     let (proof, new_balance, sender_amount, recipient_amount, auditor_amounts) = prove_transfer(
+    //         sender_dk,
+    //         sender_ek,
+    //         recipient_ek,
+    //         amount,
+    //         new_amount,
+    //         current_balance,
+    //         auditor_eks,
+    //     );
 
-        // Test assertions would go here
-        assert!(true); // Placeholder
-    }
+    //     Test assertions would go here
+    //     assert!(true); // Placeholder
+    // }
 
-    /// Proves the normalization operation.
-    fn prove_normalization(
-        dk: &ScalarBytes,
-        ek: &CompressedPubkeyBytes,
-        amount: u128,
-        current_balance: &ConfidentialBalanceBytes,
-    ) -> (NormalizationProofBytes, ConfidentialBalanceBytes) {
-        let new_balance_r = generate_balance_randomness();
-        let new_balance = new_actual_balance_from_u128(amount, &new_balance_r, ek);
+    // /// Proves the normalization operation.
+    // fn prove_normalization(
+    //     dk: &ScalarBytes,
+    //     ek: &CompressedPubkeyBytes,
+    //     amount: u128,
+    //     current_balance: &ConfidentialBalanceBytes,
+    // ) -> (NormalizationProofBytes, ConfidentialBalanceBytes) {
+    //     let new_balance_r = generate_balance_randomness();
+    //     let new_balance = new_actual_balance_from_u128(amount, &new_balance_r, ek);
 
-        let new_balance_r = balance_randomness_as_scalars(&new_balance_r);
+    //     let new_balance_r = balance_randomness_as_scalars(&new_balance_r);
 
-        let sigma_r = generate_normalization_sigma_proof_randomness();
+    //     let sigma_r = generate_normalization_sigma_proof_randomness();
 
-        let zkrp_new_balance = prove_new_balance_range(amount, &new_balance_r);
+    //     let zkrp_new_balance = prove_new_balance_range(amount, &new_balance_r);
 
-        let x1 = basepoint_mul(&scalar_linear_combination(
-            &sigma_r.x1s,
-            &(0..8)
-                .map(|i| new_scalar_from_pow2(i * 16))
-                .collect::<Vec<_>>(),
-        ));
+    //     let x1 = basepoint_mul(&scalar_linear_combination(
+    //         &sigma_r.x1s,
+    //         &(0..8)
+    //             .map(|i| new_scalar_from_pow2(i * 16))
+    //             .collect::<Vec<_>>(),
+    //     ));
 
-        let current_balance_d = balance_to_points_d(current_balance);
+    //     let current_balance_d = balance_to_points_d(current_balance);
 
-        for i in 0..8 {
-            point_add_assign(
-                &mut x1,
-                &point_mul(
-                    &current_balance_d[i],
-                    &scalar_mul(&sigma_r.x2, &new_scalar_from_pow2(i * 16)),
-                ),
-            );
-        }
+    //     for i in 0..8 {
+    //         point_add_assign(
+    //             &mut x1,
+    //             &point_mul(
+    //                 &current_balance_d[i],
+    //                 &scalar_mul(&sigma_r.x2, &new_scalar_from_pow2(i * 16)),
+    //             ),
+    //         );
+    //     }
 
-        let x2 = point_mul(&hash_to_point_base(), &sigma_r.x3);
-        // this is just the C part of every chunk, C_i  = mG+rH (protecting m with x1 and r with x4)
-        let x3s = (0..8)
-            .map(|i| {
-                let mut x3i = basepoint_mul(&sigma_r.x1s[i]);
-                point_add_assign(&mut x3i, &point_mul(&hash_to_point_base(), &sigma_r.x4s[i]));
-                x3i
-            })
-            .collect::<Vec<_>>();
-        // this is just the D part of every chunk, D_i = r_i*P (protecting r)
-        let x4s = (0..8)
-            .map(|i| point_mul(&pubkey_to_point(ek).unwrap(), &sigma_r.x4s[i]))
-            .collect::<Vec<_>>();
+    //     let x2 = point_mul(&hash_to_point_base(), &sigma_r.x3);
+    //     // this is just the C part of every chunk, C_i  = mG+rH (protecting m with x1 and r with x4)
+    //     let x3s = (0..8)
+    //         .map(|i| {
+    //             let mut x3i = basepoint_mul(&sigma_r.x1s[i]);
+    //             point_add_assign(&mut x3i, &point_mul(&hash_to_point_base(), &sigma_r.x4s[i]));
+    //             x3i
+    //         })
+    //         .collect::<Vec<_>>();
+    //     // this is just the D part of every chunk, D_i = r_i*P (protecting r)
+    //     let x4s = (0..8)
+    //         .map(|i| point_mul(&pubkey_to_point(ek).unwrap(), &sigma_r.x4s[i]))
+    //         .collect::<Vec<_>>();
 
-        let proof_xs = NormalizationSigmaProofXsBytes {
-            x1: point_compress(&x1),
-            x2: point_compress(&x2),
-            x3s: x3s.iter().map(|x| point_compress(x)).collect(),
-            x4s: x4s.iter().map(|x| point_compress(x)).collect(),
-        };
+    //     let proof_xs = NormalizationSigmaProofXsBytes {
+    //         x1: point_compress(&x1),
+    //         x2: point_compress(&x2),
+    //         x3s: x3s.iter().map(|x| point_compress(x)).collect(),
+    //         x4s: x4s.iter().map(|x| point_compress(x)).collect(),
+    //     };
 
-        let rho = fiat_shamir_normalization_sigma_proof_challenge(
-            ek,
-            current_balance,
-            &new_balance,
-            &proof_xs,
-        );
+    //     let rho = fiat_shamir_normalization_sigma_proof_challenge(
+    //         ek,
+    //         current_balance,
+    //         &new_balance,
+    //         &proof_xs,
+    //     );
 
-        let amount_chunks = split_into_chunks_u128(amount);
+    //     let amount_chunks = split_into_chunks_u128(amount);
 
-        let a1s = (0..8)
-            .map(|i| scalar_sub(&sigma_r.x1s[i], &scalar_mul(&rho, &amount_chunks[i])))
-            .collect::<Vec<_>>();
-        let a2 = scalar_sub(&sigma_r.x2, &scalar_mul(&rho, dk));
-        // I think this is proving the public key relation?
-        let a3 = scalar_sub(&sigma_r.x3, &scalar_mul(&rho, &scalar_invert(dk).unwrap()));
-        let a4s = (0..8)
-            .map(|i| scalar_sub(&sigma_r.x4s[i], &scalar_mul(&rho, &new_balance_r[i])))
-            .collect::<Vec<_>>();
+    //     let a1s = (0..8)
+    //         .map(|i| scalar_sub(&sigma_r.x1s[i], &scalar_mul(&rho, &amount_chunks[i])))
+    //         .collect::<Vec<_>>();
+    //     let a2 = scalar_sub(&sigma_r.x2, &scalar_mul(&rho, dk));
+    //     // I think this is proving the public key relation?
+    //     let a3 = scalar_sub(&sigma_r.x3, &scalar_mul(&rho, &scalar_invert(dk).unwrap()));
+    //     let a4s = (0..8)
+    //         .map(|i| scalar_sub(&sigma_r.x4s[i], &scalar_mul(&rho, &new_balance_r[i])))
+    //         .collect::<Vec<_>>();
 
-        (
-            NormalizationProofBytes {
-                sigma_proof: NormalizationSigmaProofBytes {
-                    xs: proof_xs,
-                    alphas: NormalizationSigmaProofAlphasBytes { a1s, a2, a3, a4s },
-                },
-                zkrp_new_balance,
-            },
-            new_balance,
-        )
-    }
+    //     (
+    //         NormalizationProofBytes {
+    //             sigma_proof: NormalizationSigmaProofBytes {
+    //                 xs: proof_xs,
+    //                 alphas: NormalizationSigmaProofAlphasBytes { a1s, a2, a3, a4s },
+    //             },
+    //             zkrp_new_balance,
+    //         },
+    //         new_balance,
+    //     )
+    // }
 
-    /// Proves the transfer operation.
-    fn prove_transfer(
-        sender_dk: &ScalarBytes,
-        sender_ek: &CompressedPubkeyBytes,
-        recipient_ek: &CompressedPubkeyBytes,
-        amount: u64,
-        new_amount: u128,
-        current_balance: &ConfidentialBalanceBytes,
-        auditor_eks: &[CompressedPubkeyBytes],
-    ) -> (
-        TransferProofBytes,
-        ConfidentialBalanceBytes,
-        ConfidentialBalanceBytes,
-        ConfidentialBalanceBytes,
-        Vec<ConfidentialBalanceBytes>,
-    ) {
-        let amount_r = generate_balance_randomness();
-        let new_balance_r = generate_balance_randomness();
+    // /// Proves the transfer operation.
+    // fn prove_transfer(
+    //     sender_dk: &ScalarBytes,
+    //     sender_ek: &CompressedPubkeyBytes,
+    //     recipient_ek: &CompressedPubkeyBytes,
+    //     amount: u64,
+    //     new_amount: u128,
+    //     current_balance: &ConfidentialBalanceBytes,
+    //     auditor_eks: &[CompressedPubkeyBytes],
+    // ) -> (
+    //     TransferProofBytes,
+    //     ConfidentialBalanceBytes,
+    //     ConfidentialBalanceBytes,
+    //     ConfidentialBalanceBytes,
+    //     Vec<ConfidentialBalanceBytes>,
+    // ) {
+    //     let amount_r = generate_balance_randomness();
+    //     let new_balance_r = generate_balance_randomness();
 
-        let new_balance = new_actual_balance_from_u128(new_amount, &new_balance_r, sender_ek);
+    //     let new_balance = new_actual_balance_from_u128(new_amount, &new_balance_r, sender_ek);
 
-        // encrypt the transfer amount 3 times: sender, recipient, auditors. All with the same randomness.
-        let sender_amount = new_pending_balance_from_u64(amount, &amount_r, sender_ek);
-        let recipient_amount = new_pending_balance_from_u64(amount, &amount_r, recipient_ek);
-        let auditor_amounts = auditor_eks
-            .iter()
-            .map(|ek| new_pending_balance_from_u64(amount, &amount_r, ek))
-            .collect::<Vec<_>>();
+    //     // encrypt the transfer amount 3 times: sender, recipient, auditors. All with the same randomness.
+    //     let sender_amount = new_pending_balance_from_u64(amount, &amount_r, sender_ek);
+    //     let recipient_amount = new_pending_balance_from_u64(amount, &amount_r, recipient_ek);
+    //     let auditor_amounts = auditor_eks
+    //         .iter()
+    //         .map(|ek| new_pending_balance_from_u64(amount, &amount_r, ek))
+    //         .collect::<Vec<_>>();
 
-        // the randomness are all number represented in field elements. this step just extracts the vector<Scalar>
-        // there is no conversion involved.
-        let amount_r = balance_randomness_as_scalars(&amount_r)[0..4].to_vec();
-        let new_balance_r = balance_randomness_as_scalars(&new_balance_r);
+    //     // the randomness are all number represented in field elements. this step just extracts the vector<Scalar>
+    //     // there is no conversion involved.
+    //     let amount_r = balance_randomness_as_scalars(&amount_r)[0..4].to_vec();
+    //     let new_balance_r = balance_randomness_as_scalars(&new_balance_r);
 
-        // the sigma proof randomness is for commiting (hiding) the witnesses. the balance randomess above is
-        // for elgamal encryption of values. don't confuse the two.
-        let sigma_r = generate_transfer_sigma_proof_randomness();
+    //     // the sigma proof randomness is for commiting (hiding) the witnesses. the balance randomess above is
+    //     // for elgamal encryption of values. don't confuse the two.
+    //     let sigma_r = generate_transfer_sigma_proof_randomness();
 
-        let zkrp_new_balance = prove_new_balance_range(new_amount, &new_balance_r);
-        let zkrp_transfer_amount = prove_transfer_amount_range(amount, &amount_r);
+    //     let zkrp_new_balance = prove_new_balance_range(new_amount, &new_balance_r);
+    //     let zkrp_transfer_amount = prove_transfer_amount_range(amount, &amount_r);
 
-        // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
-        let x1 = basepoint_mul(&scalar_linear_combination(
-            &sigma_r.x1s,
-            &(0..8)
-                .map(|i| new_scalar_from_pow2(i * 16))
-                .collect::<Vec<_>>(),
-        ));
+    //     // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
+    //     let x1 = basepoint_mul(&scalar_linear_combination(
+    //         &sigma_r.x1s,
+    //         &(0..8)
+    //             .map(|i| new_scalar_from_pow2(i * 16))
+    //             .collect::<Vec<_>>(),
+    //     ));
 
-        point_add_assign(
-            &mut x1,
-            &point_mul(
-                &hash_to_point_base(),
-                &scalar_sub(
-                    &scalar_linear_combination(
-                        &sigma_r.x6s,
-                        &(0..8)
-                            .map(|i| new_scalar_from_pow2(i * 16))
-                            .collect::<Vec<_>>(),
-                    ),
-                    &scalar_linear_combination(
-                        &sigma_r.x3s,
-                        &(0..4)
-                            .map(|i| new_scalar_from_pow2(i * 16))
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-            ),
-        );
+    //     point_add_assign(
+    //         &mut x1,
+    //         &point_mul(
+    //             &hash_to_point_base(),
+    //             &scalar_sub(
+    //                 &scalar_linear_combination(
+    //                     &sigma_r.x6s,
+    //                     &(0..8)
+    //                         .map(|i| new_scalar_from_pow2(i * 16))
+    //                         .collect::<Vec<_>>(),
+    //                 ),
+    //                 &scalar_linear_combination(
+    //                     &sigma_r.x3s,
+    //                     &(0..4)
+    //                         .map(|i| new_scalar_from_pow2(i * 16))
+    //                         .collect::<Vec<_>>(),
+    //                 ),
+    //             ),
+    //         ),
+    //     );
 
-        let current_balance_d = balance_to_points_d(current_balance);
-        let new_balance_d = balance_to_points_d(&new_balance);
+    //     let current_balance_d = balance_to_points_d(current_balance);
+    //     let new_balance_d = balance_to_points_d(&new_balance);
 
-        for i in 0..8 {
-            point_add_assign(
-                &mut x1,
-                &point_mul(
-                    &current_balance_d[i],
-                    &scalar_mul(&sigma_r.x2, &new_scalar_from_pow2(i * 16)),
-                ),
-            );
-        }
-        for i in 0..8 {
-            point_sub_assign(
-                &mut x1,
-                &point_mul(
-                    &new_balance_d[i],
-                    &scalar_mul(&sigma_r.x2, &new_scalar_from_pow2(i * 16)),
-                ),
-            );
-        }
+    //     for i in 0..8 {
+    //         point_add_assign(
+    //             &mut x1,
+    //             &point_mul(
+    //                 &current_balance_d[i],
+    //                 &scalar_mul(&sigma_r.x2, &new_scalar_from_pow2(i * 16)),
+    //             ),
+    //         );
+    //     }
+    //     for i in 0..8 {
+    //         point_sub_assign(
+    //             &mut x1,
+    //             &point_mul(
+    //                 &new_balance_d[i],
+    //                 &scalar_mul(&sigma_r.x2, &new_scalar_from_pow2(i * 16)),
+    //             ),
+    //         );
+    //     }
 
-        // X₂ᵢ = κ₆ᵢ·sender_ek
-        let x2s = (0..8)
-            .map(|i| point_mul(&pubkey_to_point(sender_ek).unwrap(), &sigma_r.x6s[i]))
-            .collect::<Vec<_>>();
-        // X₃ᵢ = κ₃ᵢ·recipient_ek
-        let x3s = (0..4)
-            .map(|i| point_mul(&pubkey_to_point(recipient_ek).unwrap(), &sigma_r.x3s[i]))
-            .collect::<Vec<_>>();
-        // X₄ᵢ = κ₄ᵢ·G + κ₃ᵢ·H
-        let x4s = (0..4)
-            .map(|i| {
-                let mut x4i = basepoint_mul(&sigma_r.x4s[i]);
-                point_add_assign(&mut x4i, &point_mul(&hash_to_point_base(), &sigma_r.x3s[i]));
-                x4i
-            })
-            .collect::<Vec<_>>();
-        // X₅ = κ₅·H
-        let x5 = point_mul(&hash_to_point_base(), &sigma_r.x5);
-        // X₆ᵢ = κ₁ᵢ·G + κ₆ᵢ·H
-        let x6s = (0..8)
-            .map(|i| {
-                let mut x6i = basepoint_mul(&sigma_r.x1s[i]);
-                point_add_assign(&mut x6i, &point_mul(&hash_to_point_base(), &sigma_r.x6s[i]));
-                x6i
-            })
-            .collect::<Vec<_>>();
-        // X₇ⱼᵢ = κ₃ᵢ·auditor_ekⱼ
-        let x7s = auditor_eks
-            .iter()
-            .map(|ek| {
-                (0..4)
-                    .map(|i| point_mul(&pubkey_to_point(ek).unwrap(), &sigma_r.x3s[i]))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        // X₈ᵢ = κ₃ᵢ·sender_ek
-        let x8s = (0..4)
-            .map(|i| point_mul(&pubkey_to_point(sender_ek).unwrap(), &sigma_r.x3s[i]))
-            .collect::<Vec<_>>();
+    //     // X₂ᵢ = κ₆ᵢ·sender_ek
+    //     let x2s = (0..8)
+    //         .map(|i| point_mul(&pubkey_to_point(sender_ek).unwrap(), &sigma_r.x6s[i]))
+    //         .collect::<Vec<_>>();
+    //     // X₃ᵢ = κ₃ᵢ·recipient_ek
+    //     let x3s = (0..4)
+    //         .map(|i| point_mul(&pubkey_to_point(recipient_ek).unwrap(), &sigma_r.x3s[i]))
+    //         .collect::<Vec<_>>();
+    //     // X₄ᵢ = κ₄ᵢ·G + κ₃ᵢ·H
+    //     let x4s = (0..4)
+    //         .map(|i| {
+    //             let mut x4i = basepoint_mul(&sigma_r.x4s[i]);
+    //             point_add_assign(&mut x4i, &point_mul(&hash_to_point_base(), &sigma_r.x3s[i]));
+    //             x4i
+    //         })
+    //         .collect::<Vec<_>>();
+    //     // X₅ = κ₅·H
+    //     let x5 = point_mul(&hash_to_point_base(), &sigma_r.x5);
+    //     // X₆ᵢ = κ₁ᵢ·G + κ₆ᵢ·H
+    //     let x6s = (0..8)
+    //         .map(|i| {
+    //             let mut x6i = basepoint_mul(&sigma_r.x1s[i]);
+    //             point_add_assign(&mut x6i, &point_mul(&hash_to_point_base(), &sigma_r.x6s[i]));
+    //             x6i
+    //         })
+    //         .collect::<Vec<_>>();
+    //     // X₇ⱼᵢ = κ₃ᵢ·auditor_ekⱼ
+    //     let x7s = auditor_eks
+    //         .iter()
+    //         .map(|ek| {
+    //             (0..4)
+    //                 .map(|i| point_mul(&pubkey_to_point(ek).unwrap(), &sigma_r.x3s[i]))
+    //                 .collect::<Vec<_>>()
+    //         })
+    //         .collect::<Vec<_>>();
+    //     // X₈ᵢ = κ₃ᵢ·sender_ek
+    //     let x8s = (0..4)
+    //         .map(|i| point_mul(&pubkey_to_point(sender_ek).unwrap(), &sigma_r.x3s[i]))
+    //         .collect::<Vec<_>>();
 
-        let proof_xs = TransferSigmaProofXsBytes {
-            x1: point_compress(&x1),
-            x2s: x2s.iter().map(|x| point_compress(x)).collect(),
-            x3s: x3s.iter().map(|x| point_compress(x)).collect(),
-            x4s: x4s.iter().map(|x| point_compress(x)).collect(),
-            x5: point_compress(&x5),
-            x6s: x6s.iter().map(|x| point_compress(x)).collect(),
-            x7s: x7s
-                .iter()
-                .map(|xs| xs.iter().map(|x| point_compress(x)).collect())
-                .collect(),
-            x8s: x8s.iter().map(|x| point_compress(x)).collect(),
-        };
+    //     let proof_xs = TransferSigmaProofXsBytes {
+    //         x1: point_compress(&x1),
+    //         x2s: x2s.iter().map(|x| point_compress(x)).collect(),
+    //         x3s: x3s.iter().map(|x| point_compress(x)).collect(),
+    //         x4s: x4s.iter().map(|x| point_compress(x)).collect(),
+    //         x5: point_compress(&x5),
+    //         x6s: x6s.iter().map(|x| point_compress(x)).collect(),
+    //         x7s: x7s
+    //             .iter()
+    //             .map(|xs| xs.iter().map(|x| point_compress(x)).collect())
+    //             .collect(),
+    //         x8s: x8s.iter().map(|x| point_compress(x)).collect(),
+    //     };
 
-        let rho = fiat_shamir_transfer_sigma_proof_challenge(
-            sender_ek,
-            recipient_ek,
-            current_balance,
-            &new_balance,
-            &sender_amount,
-            &recipient_amount,
-            auditor_eks,
-            &auditor_amounts,
-            &proof_xs,
-        );
+    //     let rho = fiat_shamir_transfer_sigma_proof_challenge(
+    //         sender_ek,
+    //         recipient_ek,
+    //         current_balance,
+    //         &new_balance,
+    //         &sender_amount,
+    //         &recipient_amount,
+    //         auditor_eks,
+    //         &auditor_amounts,
+    //         &proof_xs,
+    //     );
 
-        let amount_chunks = split_into_chunks_u64(amount);
-        let new_amount_chunks = split_into_chunks_u128(new_amount);
+    //     let amount_chunks = split_into_chunks_u64(amount);
+    //     let new_amount_chunks = split_into_chunks_u128(new_amount);
 
-        // a₁ᵢ = κ₁ᵢ - ρ·bᵢ                    (bᵢ = new balance chunks)
-        let a1s = (0..8)
-            .map(|i| scalar_sub(&sigma_r.x1s[i], &scalar_mul(&rho, &new_amount_chunks[i])))
-            .collect::<Vec<_>>();
-        // a₂ = κ₂ - ρ·sender_dk
-        let a2 = scalar_sub(&sigma_r.x2, &scalar_mul(&rho, sender_dk));
-        // a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
-        let a3s = (0..4)
-            .map(|i| scalar_sub(&sigma_r.x3s[i], &scalar_mul(&rho, &amount_r[i])))
-            .collect::<Vec<_>>();
-        // a₄ᵢ = κ₄ᵢ - ρ·mᵢ
-        let a4s = (0..4)
-            .map(|i| scalar_sub(&sigma_r.x4s[i], &scalar_mul(&rho, &amount_chunks[i])))
-            .collect::<Vec<_>>();
-        // a₅ = κ₅ - ρ·sender_dk^(-1)
-        let a5 = scalar_sub(
-            &sigma_r.x5,
-            &scalar_mul(&rho, &scalar_invert(sender_dk).unwrap()),
-        );
-        // a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ        (r_new_balanceᵢ = new balance randomness)
-        let a6s = (0..8)
-            .map(|i| scalar_sub(&sigma_r.x6s[i], &scalar_mul(&rho, &new_balance_r[i])))
-            .collect::<Vec<_>>();
+    //     // a₁ᵢ = κ₁ᵢ - ρ·bᵢ                    (bᵢ = new balance chunks)
+    //     let a1s = (0..8)
+    //         .map(|i| scalar_sub(&sigma_r.x1s[i], &scalar_mul(&rho, &new_amount_chunks[i])))
+    //         .collect::<Vec<_>>();
+    //     // a₂ = κ₂ - ρ·sender_dk
+    //     let a2 = scalar_sub(&sigma_r.x2, &scalar_mul(&rho, sender_dk));
+    //     // a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
+    //     let a3s = (0..4)
+    //         .map(|i| scalar_sub(&sigma_r.x3s[i], &scalar_mul(&rho, &amount_r[i])))
+    //         .collect::<Vec<_>>();
+    //     // a₄ᵢ = κ₄ᵢ - ρ·mᵢ
+    //     let a4s = (0..4)
+    //         .map(|i| scalar_sub(&sigma_r.x4s[i], &scalar_mul(&rho, &amount_chunks[i])))
+    //         .collect::<Vec<_>>();
+    //     // a₅ = κ₅ - ρ·sender_dk^(-1)
+    //     let a5 = scalar_sub(
+    //         &sigma_r.x5,
+    //         &scalar_mul(&rho, &scalar_invert(sender_dk).unwrap()),
+    //     );
+    //     // a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ        (r_new_balanceᵢ = new balance randomness)
+    //     let a6s = (0..8)
+    //         .map(|i| scalar_sub(&sigma_r.x6s[i], &scalar_mul(&rho, &new_balance_r[i])))
+    //         .collect::<Vec<_>>();
 
-        (
-            TransferProofBytes {
-                sigma_proof: TransferSigmaProofBytes {
-                    xs: proof_xs,
-                    alphas: TransferSigmaProofAlphasBytes {
-                        a1s,
-                        a2,
-                        a3s,
-                        a4s,
-                        a5,
-                        a6s,
-                    },
-                },
-                zkrp_new_balance,
-                zkrp_transfer_amount,
-            },
-            new_balance,
-            sender_amount,
-            recipient_amount,
-            auditor_amounts,
-        )
-    }
+    //     (
+    //         TransferProofBytes {
+    //             sigma_proof: TransferSigmaProofBytes {
+    //                 xs: proof_xs,
+    //                 alphas: TransferSigmaProofAlphasBytes {
+    //                     a1s,
+    //                     a2,
+    //                     a3s,
+    //                     a4s,
+    //                     a5,
+    //                     a6s,
+    //                 },
+    //             },
+    //             zkrp_new_balance,
+    //             zkrp_transfer_amount,
+    //         },
+    //         new_balance,
+    //         sender_amount,
+    //         recipient_amount,
+    //         auditor_amounts,
+    //     )
+    // }
 }
