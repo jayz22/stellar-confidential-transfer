@@ -32,6 +32,7 @@ impl ScalarBytes {
     }
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct CompressedPubkeyBytes(BytesN<32>);
 
@@ -45,16 +46,8 @@ impl CompressedPubkeyBytes {
     }
 }
 
-/// Represents the proof structure for validating a normalization operation.
-#[derive(Debug, Clone)]
-pub struct NormalizationProofBytes {
-    /// Sigma proof ensuring that the normalization operation maintains balance integrity.
-    pub sigma_proof: NormalizationSigmaProofBytes,
-    /// Range proof ensuring that the resulting balance chunks are normalized (i.e., within the 16-bit limit).
-    pub zkrp_new_balance: RangeProofBytes,
-}
-
 /// Represents the proof structure for validating a withdrawal operation.
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NewBalanceProofBytes {
     /// Sigma proof ensuring that the withdrawal operation maintains balance integrity.
@@ -64,6 +57,7 @@ pub struct NewBalanceProofBytes {
 }
 
 /// Represents the proof structure for validating a transfer operation.
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct TransferProofBytes {
     /// Sigma proof ensuring that the transfer operation maintains balance integrity and correctness.
@@ -78,6 +72,7 @@ pub struct TransferProofBytes {
 // Helper structs
 //
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofXsBytes {
     // proves the relation: Σ C_i * 2^{16i} = Σ b_i 2^{16i}G + Σ sk 2^{16i} D_i
@@ -90,6 +85,7 @@ pub struct NormalizationSigmaProofXsBytes {
     pub x4s: Vec<CompressedRistrettoBytes>,
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofAlphasBytes {
     pub a1s: Vec<ScalarBytes>, // hides the unencrypted amount chunks
@@ -98,12 +94,14 @@ pub struct NormalizationSigmaProofAlphasBytes {
     pub a4s: Vec<ScalarBytes>, // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofBytes {
     pub alphas: NormalizationSigmaProofAlphasBytes,
     pub xs: NormalizationSigmaProofXsBytes,
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NewBalanceSigmaProofXsBytes {
     // proves the relation: Σ C_i * 2^{16i} = Σ (b_i 2^{16i} - Opt(m))G + Σ sk 2^{16i} D_i
@@ -117,6 +115,7 @@ pub struct NewBalanceSigmaProofXsBytes {
     pub x4s: Vec<CompressedRistrettoBytes>,
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NewBalanceSigmaProofAlphasBytes {
     // unencrypted amount chunks
@@ -129,12 +128,14 @@ pub struct NewBalanceSigmaProofAlphasBytes {
     pub a4s: Vec<ScalarBytes>,
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct NewBalanceSigmaProofBytes {
     pub alphas: NewBalanceSigmaProofAlphasBytes,
     pub xs: NewBalanceSigmaProofXsBytes,
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct TransferSigmaProofXsBytes {
     // Balance preservation commitment
@@ -163,6 +164,7 @@ pub struct TransferSigmaProofXsBytes {
     pub x8s: Vec<CompressedRistrettoBytes>,
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct TransferSigmaProofAlphasBytes {
     pub a1s: Vec<ScalarBytes>, // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
@@ -173,6 +175,7 @@ pub struct TransferSigmaProofAlphasBytes {
     pub a6s: Vec<ScalarBytes>, // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct TransferSigmaProofBytes {
     pub alphas: TransferSigmaProofAlphasBytes,

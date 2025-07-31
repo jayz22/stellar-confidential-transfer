@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+soroban-token-sdk = { workspace = true }
 stellar-confidential-crypto = { path = "../../crypto" }
 
 [dev-dependencies]

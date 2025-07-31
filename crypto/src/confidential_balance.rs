@@ -44,8 +44,13 @@ impl ConfidentialBalanceBytes {
         debug_assert!(i == 512);
         bytes
     }
+
+    pub fn zero(e: &Env) -> Self {
+        ConfidentialBalance::new_balance_with_no_randomness(0u128).to_env_bytes(e)
+    }
 }
 
+#[contracttype]
 #[derive(Debug, Clone)]
 pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
 
@@ -61,7 +66,21 @@ impl ConfidentialAmountBytes {
         }
         debug_assert!(i == 256);
         bytes
-    }    
+    }
+
+    pub fn add(e: &Env, lhs: &Self, rhs: &Self) -> Self {
+        let lhs = ConfidentialAmount::from_env_bytes(lhs);
+        let rhs = ConfidentialAmount::from_env_bytes(rhs);
+        lhs.add(&rhs).to_env_bytes(e)
+    }
+
+    pub fn zero(e: &Env) -> Self {
+        ConfidentialAmount::new_amount_with_no_randomness(0u64).to_env_bytes(e)
+    }
+
+    pub fn from_u64_with_no_randomness(e: &Env, amount: u64) -> Self {
+        ConfidentialAmount::new_amount_with_no_randomness(amount).to_env_bytes(e)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -181,6 +200,16 @@ impl ConfidentialAmount {
         true
     }
 
+    pub fn add(&self, other: &Self) -> Self {
+        let mut result_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
+        for i in 0..AMOUNT_CHUNKS {
+            result_chunks[i] = EncryptedChunk {
+                amount: self.0[i].amount + other.0[i].amount,
+                handle: self.0[i].handle + other.0[i].handle,
+            };
+        }
+        ConfidentialAmount(result_chunks)
+    }
 }
 
 impl ConfidentialBalance {

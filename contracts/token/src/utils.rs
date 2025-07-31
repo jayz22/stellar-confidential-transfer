@@ -1,9 +1,10 @@
-use soroban_sdk::{contracttype, Address, BytesN, Env};
+use soroban_sdk::{contracttype, Address, Env, String};
+use stellar_confidential_crypto::{ConfidentialAmountBytes, ConfidentialBalanceBytes};
 
 use crate::contract::{AccountConfidentialExt, TokenConfidentialExt};
-use stellar_confidential_crypto::proof::{
-    CompressedPubkeyBytes, CompressedRistretto, ConfidentialAmount, ConfidentialBalance, EncryptedChunk,
-};
+use stellar_confidential_crypto::proof::CompressedPubkeyBytes;
+use soroban_token_sdk::metadata::TokenMetadata;
+use soroban_token_sdk::TokenUtils;
 
 pub(crate) const DAY_IN_LEDGERS: u32 = 17280;
 pub(crate) const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
@@ -180,14 +181,14 @@ pub fn check_nonnegative_amount(amount: i128) {
 }
 
 // confidential ext
-pub fn init_token_confidential_ext(e: &Env, auditor_keys: Vec<CompressedPubkeyBytes>) {
+pub fn init_token_confidential_ext(e: &Env, auditor_key: CompressedPubkeyBytes) {
     let key = DataKey::TokenConfidentialExt;
     if e.storage().instance().has(&key) {
         panic!("confidential token extention already initialized")
     }
     let ext = TokenConfidentialExt {
         enabled_flag: true,
-        auditors: auditor_keys,
+        auditor: auditor_key,
         total_confidential_supply: 0,
     };
     e.storage().instance().set(&key, &ext);
@@ -201,8 +202,8 @@ pub fn init_acc_confidential_ext(e: &Env, acc: Address, ek: CompressedPubkeyByte
     let ext = AccountConfidentialExt {
         enabled_flag: true,
         encryption_key: ek,
-        available_balance: ConfidentialBalance::zero(), // Initialize with zero balance
-        pending_balance: ConfidentialAmount::zero(),    // Initialize with zero pending balance
+        available_balance: ConfidentialBalanceBytes::zero(e), // Initialize with zero balance
+        pending_balance: ConfidentialAmountBytes::zero(e),    // Initialize with zero pending balance
         pending_counter: 0,
     };
     e.storage().persistent().set(&key, &ext);
@@ -211,7 +212,6 @@ pub fn init_acc_confidential_ext(e: &Env, acc: Address, ek: CompressedPubkeyByte
         .extend_ttl(&key, BALANCE_LIFETIME_THRESHOLD, BALANCE_BUMP_AMOUNT);
 }
 
-// confidential ext helper functions
 pub fn read_token_confidential_ext(e: &Env) -> TokenConfidentialExt {
     let key = DataKey::TokenConfidentialExt;
     e.storage().instance().get(&key).unwrap()

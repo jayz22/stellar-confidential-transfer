@@ -360,6 +360,7 @@ name = "confidential-token"
 version = "0.0.0"
 dependencies = [
  "soroban-sdk",
+ "soroban-token-sdk",
  "stellar-confidential-crypto",
 ]
 
@@ -1720,6 +1721,15 @@ dependencies = [
  "stellar-xdr",
  "syn 2.0.101",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "soroban-token-sdk"
+version = "22.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b5d44abd4abb253c0714d28b3b5a9db6aaf9afa1684c3a23778e07a201c3adb"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
