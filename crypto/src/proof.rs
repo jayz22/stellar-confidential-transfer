@@ -1,19 +1,18 @@
 use crate::{
     arith::{
-        basepoint, bytes_to_point, bytes_to_scalar, hash_to_point_base, new_scalar_from_sha2_512, new_scalar_from_u64, point_to_bytes, aggregate_scalar_chunks, aggregate_point_chunks, basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub
+        basepoint, bytes_to_point, bytes_to_scalar, hash_to_point_base, new_scalar_from_sha2_512, new_scalar_from_u64, point_to_bytes, aggregate_scalar_chunks, aggregate_point_chunks
     },
     confidential_balance::*,
 };
+use crate::confidential_proof::{verify_new_balance_range_proof, verify_transfer_amount_range_proof, RangeProofBytes};
 use curve25519_dalek::{traits::Identity, RistrettoPoint, Scalar};
-use soroban_sdk::{contracttype, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 
 const FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/NewBalanceProofFiatShamir";
 const FIAT_SHAMIR_TRANSFER_SIGMA_DST: &[u8] = b"StellarConfidentialToken/TransferProofFiatShamir";
 
-const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof";
-pub const BULLETPROOFS_NUM_BITS: usize = 16;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -32,9 +31,6 @@ impl ScalarBytes {
         ScalarBytes(BytesN::from_array(e, &s.to_bytes()))
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct RangeProofBytes(pub Bytes);
 
 #[derive(Debug, Clone)]
 pub struct CompressedPubkeyBytes(BytesN<32>);
@@ -651,7 +647,7 @@ pub fn verify_normalization_proof(
     proof: &NewBalanceProofBytes,
 ) -> Result<(), Error> {
     verify_new_balance_sigma_proof(ek, None, current_balance, new_balance, &proof.sigma_proof)?;
-    verify_new_balance_range_proof(new_balance, &proof.zkrp_new_balance)?;
+    verify_new_balance_range_proof(&ConfidentialBalance::from_env_bytes(new_balance), &proof.zkrp_new_balance)?;
     Ok(())
 }
 
@@ -672,7 +668,7 @@ pub fn verify_withdrawal_proof(
     proof: &NewBalanceProofBytes,
 ) -> Result<(), Error> {
     verify_new_balance_sigma_proof(ek, Some(amount), current_balance, new_balance, &proof.sigma_proof)?;
-    verify_new_balance_range_proof(new_balance, &proof.zkrp_new_balance)?;
+    verify_new_balance_range_proof(&ConfidentialBalance::from_env_bytes(new_balance), &proof.zkrp_new_balance)?;
     Ok(())
 }
 
@@ -711,8 +707,8 @@ pub fn verify_transfer_proof(
         auditor_amount,
         &proof.sigma_proof,
     )?;
-    verify_new_balance_range_proof(new_balance, &proof.zkrp_new_balance)?;
-    verify_transfer_amount_range_proof(recipient_amount, &proof.zkrp_transfer_amount)?;
+    verify_new_balance_range_proof(&ConfidentialBalance::from_env_bytes(new_balance), &proof.zkrp_new_balance)?;
+    verify_transfer_amount_range_proof(&ConfidentialAmount::from_env_bytes(recipient_amount), &proof.zkrp_transfer_amount)?;
     Ok(())
 }
 
@@ -944,46 +940,6 @@ fn verify_transfer_sigma_proof(
     Ok(())
 }
 
-/// Verifies the validity of the `NewBalanceRangeProof`.
-fn verify_new_balance_range_proof(
-    new_balance: &ConfidentialBalanceBytes,
-    zkrp_new_balance: &RangeProofBytes,
-) -> Result<(), Error> {    
-    // let balance_c = balance_to_points_c(new_balance);
-
-    // if !verify_batch_range_proof(
-    //     &balance_c,
-    //     &basepoint(),
-    //     &hash_to_point_base(),
-    //     zkrp_new_balance,
-    //     BULLETPROOFS_NUM_BITS,
-    //     BULLETPROOFS_DST,
-    // ) {
-    //     return Err(Error::RangeProofVerificationFailed);
-    // }
-    Ok(())
-}
-
-/// Verifies the validity of the `TransferBalanceRangeProof`.
-fn verify_transfer_amount_range_proof(
-    transfer_amount: &ConfidentialAmountBytes,
-    zkrp_transfer_amount: &RangeProofBytes,
-) -> Result<(), Error> {
-    // let balance_c = balance_to_points_c(transfer_amount);
-
-    // if !verify_batch_range_proof(
-    //     &balance_c,
-    //     &basepoint(),
-    //     &hash_to_point_base(),
-    //     zkrp_transfer_amount,
-    //     BULLETPROOFS_NUM_BITS,
-    //     BULLETPROOFS_DST,
-    // ) {
-    //     return Err(Error::RangeProofVerificationFailed);
-    // }
-    Ok(())
-}
-
 /// Derives the Fiat-Shamir challenge for the `NewBalanceSigmaProof`.
 fn fiat_shamir_new_balance_sigma_proof_challenge(
     ek: &CompressedPubkeyBytes,
@@ -1072,6 +1028,7 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
 pub mod testutils {
     use super::*;
     use crate::{arith::{basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}};
+    use crate::confidential_proof::testutils::{prove_new_balance_range, prove_transfer_amount_range};
     use rand::rngs::OsRng;
 
     pub struct NewBalanceSigmaProofRandomness {
@@ -1177,14 +1134,12 @@ pub mod testutils {
         new_balance_u128: u128,
         current_balance: &ConfidentialBalance,
     ) -> (NewBalanceProofBytes, ConfidentialBalanceBytes) {
-        use crate::confidential_proof::prove_new_balance_range;
-
         let new_balance_r = generate_balance_randomness();
         let new_balance = ConfidentialBalance::new_balance_from_u128(new_balance_u128, &new_balance_r, &ek);
         let new_balance_bytes = new_balance.to_env_bytes(&env);
         let sigma_r = NewBalanceSigmaProofRandomness::generate();
 
-        let zkrp_new_balance = prove_new_balance_range(new_balance_u128, &new_balance_r).proof;
+        let zkrp_new_balance = prove_new_balance_range(env, new_balance_u128, &new_balance_r).proof;
 
         // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
         let scalar_g = aggregate_scalar_chunks(&sigma_r.k1s);
@@ -1287,8 +1242,8 @@ pub mod testutils {
         let recipient_amount_bytes = recipient_amount.to_env_bytes(&env);
         let auditor_amount_bytes = auditor_amount.to_env_bytes(&env);
 
-        let zkrp_new_balance = prove_new_balance_range(env, new_balance_u128, &new_balance_r);
-        let zkrp_transfer_amount = prove_transfer_amount_range(env, amount_u64, &amount_r);
+        let zkrp_new_balance = prove_new_balance_range(env, new_balance_u128, &new_balance_r).proof;
+        let zkrp_transfer_amount = prove_transfer_amount_range(env, amount_u64, &amount_r).proof;
 
         // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
         let scalar_g = aggregate_scalar_chunks(&sigma_r.k1s);

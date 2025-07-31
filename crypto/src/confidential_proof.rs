@@ -1,14 +1,24 @@
-use crate::RangeProofBytes;
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
 use curve25519_dalek::ristretto::CompressedRistretto;
-use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
-use soroban_sdk::{Bytes, Env};
+use soroban_sdk::{contracttype, Bytes};
 
-use super::confidential_balance::{
+use crate::confidential_balance::{
     ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS,
 };
-use super::proof::BULLETPROOFS_NUM_BITS;
+use crate::Error;
+
+// TODO: this module depends on `std`, we need to decouple from it before shipping
+
+const BULLETPROOFS_NUM_BITS: usize = 16;
+// Max bitsize for range proofs
+const RANGEPROOF_GENS_CAPACITY: usize = 64;
+// Label to use for domain separation in bulletproofs transcripts
+const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof";
+
+#[contracttype]
+#[derive(Debug, Clone)]
+pub struct RangeProofBytes(pub Bytes);
 
 /// Result of proving a balance value is within valid range.
 ///
@@ -44,16 +54,121 @@ pub struct AmountRangeProofResult {
     pub commitments: Vec<CompressedRistretto>,
 }
 
-// Max bitsize for range proofs
-const RANGEPROOF_GENS_CAPACITY: usize = 64;
 
-// Label to use for domain separation in bulletproofs transcripts
-const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/Bulletproofs";
+// Generic helper function to verify range proofs
+fn verify_range_generic<const N: usize>(
+    commitments: &[CompressedRistretto],
+    proof: &RangeProofBytes,
+) -> Result<(), Error> {
+    // Create the same bulletproof generators used in proving
+    let pc_gens = PedersenGens::default();
+    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+
+    // Create transcript with the same domain separation
+    let mut transcript = Transcript::new(BULLETPROOFS_DST);
+
+    // Deserialize the proof
+    let proof_bytes: Vec<u8> = proof.0.iter().collect();
+    let range_proof =
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| Error::RangeProofVerificationFailed)?;
+
+    // TODO: the `verify_multiple_with_rng` on `std`, we need to decouple from it.
+    // Either by calling `prove_multiple_with_rng` function and pass in a 
+    // non-std dependent rng (RngCore + CryptoRng), or move the bulletproof
+    // verification entirely to the host side.
+
+    // Verify the range proof
+    range_proof
+        .verify_multiple(
+            &bp_gens,
+            &pc_gens,
+            &mut transcript,
+            commitments,
+            BULLETPROOFS_NUM_BITS as usize,
+        )
+        .map_err(|_| Error::RangeProofVerificationFailed)
+}
+
+/// Verifies a zero-knowledge range proof for a confidential balance.
+///
+/// This function extracts the Pedersen commitments from the provided
+/// confidential balance and verifies that the associated range proof is valid.
+/// The proof demonstrates that each of the 8 chunks of the balance is within
+/// the valid range [0, 2^16).
+pub fn verify_new_balance_range_proof(
+    new_balance: &ConfidentialBalance,
+    proof: &RangeProofBytes,
+) -> Result<(), Error> {
+    // Extract Pedersen commitments from the confidential balance
+    let balance_points = new_balance.get_encrypted_balances();
+
+    // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
+    let commitments: Vec<CompressedRistretto> = balance_points
+        .iter()
+        .map(|point| point.compress())
+        .collect();
+
+    // Use generic helper to verify the range proof
+    verify_range_generic::<BALANCE_CHUNKS>(&commitments, proof)
+}
+
+/// Verifies a zero-knowledge range proof for a confidential transfer amount.
+///
+/// This function extracts the Pedersen commitments from the provided
+/// confidential amount and verifies that the associated range proof is valid.
+/// The proof demonstrates that each of the 4 chunks of the amount is within the
+/// valid range [0, 2^16).
+pub fn verify_transfer_amount_range_proof(
+    new_amount: &ConfidentialAmount,
+    proof: &RangeProofBytes,
+) -> Result<(), Error> {
+    // Extract Pedersen commitments from the confidential amount
+    let amount_points = new_amount.get_encrypted_amounts();
+
+    // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
+    let commitments: Vec<CompressedRistretto> =
+        amount_points.iter().map(|point| point.compress()).collect();
+
+    // Use generic helper to verify the range proof
+    verify_range_generic::<AMOUNT_CHUNKS>(&commitments, proof)
+}
+
+#[cfg(test)]
+pub mod testutils {
+use super::*;
+use curve25519_dalek::scalar::Scalar;
+use soroban_sdk::Env;
+
+// Generic function to chunk a value into N 16-bit chunks.  For compatibility
+// with the bulletproofs library, this extends each chunk to 64 bits.
+fn chunk_value<const N: usize>(value: u128) -> [u64; N] {
+    let mut chunks = [0u64; N];
+    for i in 0..N {
+        let masked = (value >> (i * 16)) & 0xFFFF;
+        assert!(masked <= u16::MAX as u128, "Chunk exceeds u16 max");
+        chunks[i] = masked as u64;
+    }
+    chunks
+}
+
+// Chunks a u128 value into 8 16-bit chunks. For compatibility with the
+// bulletproofs library, this extends each chunk to 64 bits.
+fn chunk_u128(value: u128) -> [u64; 8] {
+    chunk_value::<8>(value)
+}
+
+// Chunks a u64 value into 4 16-bit chunks. For compatibility with the
+// bulletproofs library, this extends each chunk to 64 bits.
+fn chunk_u64(value: u64) -> [u64; 4] {
+    chunk_value::<4>(value as u128)
+}
+
 
 // Generic helper function to create range proofs for chunked values. Provides a
 // proof that each chunk is in the range [0, 2^num_bits). With the exception of
 // testing, `num_bits` should always be `BULLETPROOFS_NUM_BITS` (16).
-fn prove_range_generic<const N: usize>(
+pub(crate) fn prove_range_generic<const N: usize>(
+    env: &Env,
     chunks: &[u64; N],
     randomness: &[Scalar; N],
     num_bits: usize,
@@ -80,82 +195,19 @@ fn prove_range_generic<const N: usize>(
     // Serialize the proof
     let proof_bytes = proof.to_bytes();
     (
-        RangeProofBytes(Bytes::from_slice(&Env::default(), &proof_bytes)),
+        RangeProofBytes(Bytes::from_slice(env, &proof_bytes)),
         commitments,
     )
 }
 
-// Generic helper function to verify range proofs
-fn verify_range_generic<const N: usize>(
-    commitments: &[CompressedRistretto],
-    proof: &RangeProofBytes,
-) -> Result<(), &'static str> {
-    // Create the same bulletproof generators used in proving
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
-
-    // Create transcript with the same domain separation
-    let mut transcript = Transcript::new(BULLETPROOFS_DST);
-
-    // Deserialize the proof
-    let proof_bytes: Vec<u8> = proof.0.iter().collect();
-    let range_proof =
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| "Failed to deserialize range proof")?;
-
-    // Verify the range proof
-    range_proof
-        .verify_multiple(
-            &bp_gens,
-            &pc_gens,
-            &mut transcript,
-            commitments,
-            BULLETPROOFS_NUM_BITS as usize,
-        )
-        .map_err(|_| "Range proof verification failed")
-}
-
-// Generic function to chunk a value into N 16-bit chunks.  For compatibility
-// with the bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_value<const N: usize>(value: u128) -> [u64; N] {
-    let mut chunks = [0u64; N];
-    for i in 0..N {
-        let masked = (value >> (i * 16)) & 0xFFFF;
-        assert!(masked <= u16::MAX as u128, "Chunk exceeds u16 max");
-        chunks[i] = masked as u64;
-    }
-    chunks
-}
-
-// Chunks a u128 value into 8 16-bit chunks. For compatibility with the
-// bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_u128(value: u128) -> [u64; 8] {
-    chunk_value::<8>(value)
-}
-
-// Chunks a u64 value into 4 16-bit chunks. For compatibility with the
-// bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_u64(value: u64) -> [u64; 4] {
-    chunk_value::<4>(value as u128)
-}
 
 /// Creates a zero-knowledge range proof for a 128-bit balance value.
 ///
 /// This function splits the balance into 8 chunks of 16 bits each and creates a
 /// bulletproof demonstrating that each chunk is within the valid range
 /// [0, 2^16).
-///
-/// # Arguments
-///
-/// * `new_balance` - The 128-bit balance value to prove is in valid range
-/// * `randomness` - Array of 8 scalar values used as blinding factors for each
-///   chunk's commitment
-///
-/// # Returns
-///
-/// A `BalanceRangeProofResult` containing:
-/// - The serialized bulletproof
-/// - The Pedersen commitments for each chunk
 pub fn prove_new_balance_range(
+    env: &Env,
     new_balance: u128,
     randomness: &[Scalar; BALANCE_CHUNKS],
 ) -> BalanceRangeProofResult {
@@ -163,7 +215,7 @@ pub fn prove_new_balance_range(
     let chunks = chunk_u128(new_balance);
 
     // Use generic helper to create the range proof
-    let (proof, commitments) = prove_range_generic(&chunks, randomness, BULLETPROOFS_NUM_BITS);
+    let (proof, commitments) = prove_range_generic(env, &chunks, randomness, BULLETPROOFS_NUM_BITS);
 
     // Serialize the proof
     BalanceRangeProofResult { proof, commitments }
@@ -174,18 +226,8 @@ pub fn prove_new_balance_range(
 /// This function splits the amount into 4 chunks of 16 bits each and creates a
 /// bulletproof demonstrating that each chunk is within the valid range
 /// [0, 2^16).
-///
-/// # Arguments
-///
-/// * `new_amount` - The 64-bit transfer amount to prove is in valid range
-/// * `randomness` - Array of 4 scalar values used as blinding factors for each chunk's commitment
-///
-/// # Returns
-///
-/// An `AmountRangeProofResult` containing:
-/// - The serialized bulletproof
-/// - The Pedersen commitments for each chunk
 pub fn prove_transfer_amount_range(
+    env: &Env,
     new_amount: u64,
     randomness: &[Scalar; AMOUNT_CHUNKS],
 ) -> AmountRangeProofResult {
@@ -193,85 +235,30 @@ pub fn prove_transfer_amount_range(
     let chunks = chunk_u64(new_amount);
 
     // Use generic helper to create the range proof
-    let (proof, commitments) = prove_range_generic(&chunks, randomness, BULLETPROOFS_NUM_BITS);
+    let (proof, commitments) = prove_range_generic(env, &chunks, randomness, BULLETPROOFS_NUM_BITS);
 
     AmountRangeProofResult { proof, commitments }
 }
 
-/// Verifies a zero-knowledge range proof for a confidential balance.
-///
-/// This function extracts the Pedersen commitments from the provided
-/// confidential balance and verifies that the associated range proof is valid.
-/// The proof demonstrates that each of the 8 chunks of the balance is within
-/// the valid range [0, 2^16).
-///
-/// # Arguments
-///
-/// * `new_balance` - The confidential balance containing encrypted chunks to verify
-/// * `proof` - The serialized bulletproof to verify against the balance commitments
-///
-/// # Returns
-///
-/// * `Ok(())` if the proof is valid for the provided balance
-/// * `Err(&str)` if the proof is invalid or malformed
-pub fn verify_new_balance_range_proof(
-    new_balance: &ConfidentialBalance,
-    proof: &RangeProofBytes,
-) -> Result<(), &'static str> {
-    // Extract Pedersen commitments from the confidential balance
-    let balance_points = new_balance.get_encrypted_balances();
-
-    // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
-    let commitments: Vec<CompressedRistretto> = balance_points
-        .iter()
-        .map(|point| point.compress())
-        .collect();
-
-    // Use generic helper to verify the range proof
-    verify_range_generic::<BALANCE_CHUNKS>(&commitments, proof)
-}
-
-/// Verifies a zero-knowledge range proof for a confidential transfer amount.
-///
-/// This function extracts the Pedersen commitments from the provided
-/// confidential amount and verifies that the associated range proof is valid.
-/// The proof demonstrates that each of the 4 chunks of the amount is within the
-/// valid range [0, 2^16).
-///
-/// # Arguments
-///
-/// * `new_amount` - The confidential amount containing encrypted chunks to verify
-/// * `proof` - The serialized bulletproof to verify against the amount commitments
-///
-/// # Returns
-///
-/// * `Ok(())` if the proof is valid for the provided amount
-/// * `Err(&str)` if the proof is invalid or malformed
-pub fn verify_transfer_amount_range_proof(
-    new_amount: &ConfidentialAmount,
-    proof: &RangeProofBytes,
-) -> Result<(), &'static str> {
-    // Extract Pedersen commitments from the confidential amount
-    let amount_points = new_amount.get_encrypted_amounts();
-
-    // Convert RistrettoPoints to CompressedRistretto for bulletproofs API
-    let commitments: Vec<CompressedRistretto> =
-        amount_points.iter().map(|point| point.compress()).collect();
-
-    // Use generic helper to verify the range proof
-    verify_range_generic::<AMOUNT_CHUNKS>(&commitments, proof)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::testutils::*;
     use crate::arith;
     use crate::confidential_balance::EncryptedChunk;
+    use curve25519_dalek::ristretto::RistrettoPoint;
     use curve25519_dalek::traits::Identity;
+    use curve25519_dalek::Scalar;
+    use rand::rngs::OsRng;
+    use soroban_sdk::Env;
     use std::array;
 
     #[test]
     fn test_prove_and_verify_new_balance_range() {
+        let env = Env::default();
+
         // Test with a valid 128-bit balance
         let balance = 0x123456789ABCDEFu128;
 
@@ -279,7 +266,7 @@ mod tests {
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
 
         // Create the range proof
-        let result = prove_new_balance_range(balance, &randomness);
+        let result = prove_new_balance_range(&env, balance, &randomness);
 
         // Create a confidential balance using new_balance_with_no_randomness
         let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
@@ -306,11 +293,12 @@ mod tests {
 
     #[test]
     fn test_verify_with_wrong_balance_fails() {
+        let env = Env::default();
         // Create a proof for one balance
         let balance = 12345u128;
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        let result = prove_new_balance_range(balance, &randomness);
-
+        let result = prove_new_balance_range(&env, balance, &randomness);
+        
         // But create commitments for a different balance
         let wrong_balance = 54321u128;
         let confidential_balance =
@@ -340,6 +328,7 @@ mod tests {
 
     #[test]
     fn test_prove_and_verify_transfer_amount_range() {
+        let env = Env::default();
         // Test with a valid 64-bit amount
         let amount = 0x123456789ABCDEFu64;
 
@@ -347,7 +336,7 @@ mod tests {
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
 
         // Create the range proof
-        let result = prove_transfer_amount_range(amount, &randomness);
+        let result = prove_transfer_amount_range(&env, amount, &randomness);
 
         // Create a confidential amount using new_amount_with_no_randomness
         let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(amount);
@@ -363,10 +352,11 @@ mod tests {
 
     #[test]
     fn test_verify_transfer_amount_with_wrong_amount_fails() {
+        let env = Env::default();
         // Create a proof for one amount
         let amount = 12345u64;
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
-        let result = prove_transfer_amount_range(amount, &randomness);
+        let result = prove_transfer_amount_range(&env, amount, &randomness);
 
         // But create commitments for a different amount
         let wrong_amount = 54321u64;
@@ -396,8 +386,7 @@ mod tests {
 
     #[test]
     fn test_prove_and_verify_new_balance_range_with_nonzero_randomness() {
-        use curve25519_dalek::ristretto::RistrettoPoint;
-        use rand::rngs::OsRng;
+        let env = Env::default();
 
         // Test with a valid 128-bit balance
         let balance = 0x123456789ABCDEFu128;
@@ -406,7 +395,7 @@ mod tests {
         let randomness = array::from_fn(|_| Scalar::random(&mut OsRng));
 
         // Create the range proof
-        let result = prove_new_balance_range(balance, &randomness);
+        let result = prove_new_balance_range(&env, balance, &randomness);
 
         // Create a fake confidential balance using the commitments from the proof
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
@@ -443,8 +432,7 @@ mod tests {
 
     #[test]
     fn test_prove_and_verify_transfer_amount_range_with_nonzero_randomness() {
-        use curve25519_dalek::ristretto::RistrettoPoint;
-        use rand::rngs::OsRng;
+        let env = Env::default();
 
         // Test with a valid 64-bit amount
         let amount = 0x123456789ABCDEFu64;
@@ -453,7 +441,7 @@ mod tests {
         let randomness = array::from_fn(|_| Scalar::random(&mut OsRng));
 
         // Create the range proof
-        let result = prove_transfer_amount_range(amount, &randomness);
+        let result = prove_transfer_amount_range(&env, amount, &randomness);
 
         // Create a fake confidential amount using the commitments from the proof
         // The handle values are arbitrary since they're not used in range proof verification
@@ -491,7 +479,7 @@ mod tests {
 
     #[test]
     fn test_verify_balance_with_chunk_over_16_bits_fails() {
-        use curve25519_dalek::ristretto::RistrettoPoint;
+        let env = Env::default();
 
         // Create chunks where one chunk has a value > 2^16-1
         // We'll use values that fit in 32 bits but not 16 bits
@@ -509,7 +497,7 @@ mod tests {
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
 
         // Create a valid range proof for 32-bit chunks
-        let (proof_32bit, commitments) = prove_range_generic(&chunks, &randomness, 32);
+        let (proof_32bit, commitments) = prove_range_generic(&env, &chunks, &randomness, 32);
 
         // Create a confidential balance using the commitments from the 32-bit proof
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
@@ -532,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_verify_amount_with_chunk_over_16_bits_fails() {
-        use curve25519_dalek::ristretto::RistrettoPoint;
+        let env = Env::default();
 
         // Create chunks where one chunk has a value > 2^16-1
         // We'll use values that fit in 32 bits but not 16 bits
@@ -546,7 +534,7 @@ mod tests {
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
 
         // Create a valid range proof for 32-bit chunks
-        let (proof_32bit, commitments) = prove_range_generic(&chunks, &randomness, 32);
+        let (proof_32bit, commitments) = prove_range_generic(&env, &chunks, &randomness, 32);
 
         // Create a confidential amount using the commitments from the 32-bit proof
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
@@ -569,12 +557,13 @@ mod tests {
 
     #[test]
     fn test_verify_balance_with_max_valid_chunks() {
+        let env = Env::default();
         // Create a balance where all chunks are at the maximum valid value (2^16-1 = 65535)
         let max_chunk_value = 65535u16; // 2^16 - 1
         let balance = (max_chunk_value as u128) * 0x0001000100010001000100010001u128; // All chunks are 0xFFFF
 
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        let result = prove_new_balance_range(balance, &randomness);
+        let result = prove_new_balance_range(&env, balance, &randomness);
 
         // Create a confidential balance using the valid proof
         let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
@@ -590,12 +579,13 @@ mod tests {
 
     #[test]
     fn test_verify_amount_with_max_valid_chunks() {
+        let env = Env::default();
         // Create an amount where all chunks are at the maximum valid value (2^16-1 = 65535)
         let max_chunk_value = 65535u16; // 2^16 - 1
         let amount = (max_chunk_value as u64) * 0x000100010001u64; // All chunks are 0xFFFF
 
         let randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
-        let result = prove_transfer_amount_range(amount, &randomness);
+        let result = prove_transfer_amount_range(&env, amount, &randomness);
 
         // Create a confidential amount using the valid proof
         let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(amount);
@@ -611,13 +601,12 @@ mod tests {
 
     #[test]
     fn test_verify_with_manipulated_commitments_fails() {
-        use curve25519_dalek::ristretto::RistrettoPoint;
-        use rand::rngs::OsRng;
+        let env = Env::default();
 
         // Create a proof for a valid balance
         let balance = 0x123456789ABCDEFu128;
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
-        let result = prove_new_balance_range(balance, &randomness);
+        let result = prove_new_balance_range(&env, balance, &randomness);
 
         // Create a confidential balance with completely different random commitments
         // that don't correspond to the proof
@@ -642,7 +631,7 @@ mod tests {
         // Similarly test for amount
         let amount = 0x123456789ABCDEFu64;
         let amount_randomness = [Scalar::ZERO; AMOUNT_CHUNKS];
-        let amount_result = prove_transfer_amount_range(amount, &amount_randomness);
+        let amount_result = prove_transfer_amount_range(&env, amount, &amount_randomness);
 
         // Create a confidential amount with manipulated commitments
         let mut amount_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];

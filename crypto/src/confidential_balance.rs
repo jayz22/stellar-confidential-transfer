@@ -1,9 +1,9 @@
 use crate::arith;
-use crate::{arith::new_scalar_from_u64 , RangeProofBytes};
+use crate::arith::new_scalar_from_u64;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
-use soroban_sdk::{contracttype, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
@@ -305,26 +305,6 @@ pub mod testutils {
         }
         wrong_balance.to_env_bytes(correct_balance.0.env())
     }
-}
-
-
-
-// range proof
-
-pub fn prove_new_balance_range(e: &Env, _new_balance: u128, _randomness: &[Scalar; BALANCE_CHUNKS]) -> RangeProofBytes {
-    RangeProofBytes(Bytes::new(e))
-}
-
-pub fn prove_transfer_amount_range(e: &Env, _new_amount: u64, _randomness: &[Scalar; AMOUNT_CHUNKS]) -> RangeProofBytes {
-    RangeProofBytes(Bytes::new(e))
-}
-
-pub fn verify_new_balance_range_proof(_new_balance: &ConfidentialBalance, _proof: &RangeProofBytes) {
-    todo!()
-}
-
-pub fn verify_transfer_amount_range_proof(_new_amount: &ConfidentialAmount, _proof: &RangeProofBytes) {
-    todo!()
 }
 
 #[cfg(test)]
