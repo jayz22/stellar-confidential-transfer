@@ -4,7 +4,7 @@ pub mod proof;
 pub use proof::*;
 pub mod confidential_balance;
 pub use confidential_balance::*;
-pub mod confidential_proof;
+pub mod range_proof;
 
 #[cfg(test)]
 mod tests {

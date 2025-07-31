@@ -4,7 +4,7 @@ use crate::{
     },
     confidential_balance::*,
 };
-use crate::confidential_proof::{verify_new_balance_range_proof, verify_transfer_amount_range_proof, RangeProofBytes};
+use crate::range_proof::{verify_new_balance_range_proof, verify_transfer_amount_range_proof, RangeProofBytes};
 use curve25519_dalek::{traits::Identity, RistrettoPoint, Scalar};
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
 
@@ -1028,7 +1028,7 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
 pub mod testutils {
     use super::*;
     use crate::{arith::{basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}};
-    use crate::confidential_proof::testutils::{prove_new_balance_range, prove_transfer_amount_range};
+    use crate::range_proof::testutils::{prove_new_balance_range, prove_transfer_amount_range};
     use rand::rngs::OsRng;
 
     pub struct NewBalanceSigmaProofRandomness {
