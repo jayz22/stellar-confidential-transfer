@@ -13,7 +13,7 @@ const FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST: &[u8] =
 const FIAT_SHAMIR_TRANSFER_SIGMA_DST: &[u8] = b"StellarConfidentialToken/TransferProofFiatShamir";
 
 const BULLETPROOFS_DST: &[u8] = b"StellarConfidentialToken/BulletproofRangeProof";
-const BULLETPROOFS_NUM_BITS: u64 = 16;
+pub const BULLETPROOFS_NUM_BITS: usize = 16;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -1177,12 +1177,14 @@ pub mod testutils {
         new_balance_u128: u128,
         current_balance: &ConfidentialBalance,
     ) -> (NewBalanceProofBytes, ConfidentialBalanceBytes) {
+        use crate::confidential_proof::prove_new_balance_range;
+
         let new_balance_r = generate_balance_randomness();
         let new_balance = ConfidentialBalance::new_balance_from_u128(new_balance_u128, &new_balance_r, &ek);
         let new_balance_bytes = new_balance.to_env_bytes(&env);
         let sigma_r = NewBalanceSigmaProofRandomness::generate();
 
-        let zkrp_new_balance = prove_new_balance_range(&env, new_balance_u128, &new_balance_r);
+        let zkrp_new_balance = prove_new_balance_range(new_balance_u128, &new_balance_r).proof;
 
         // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
         let scalar_g = aggregate_scalar_chunks(&sigma_r.k1s);
