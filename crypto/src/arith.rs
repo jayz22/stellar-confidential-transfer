@@ -175,6 +175,32 @@ pub fn pubkey_from_secret_key(sk: &Scalar) -> RistrettoPoint {
     point_mul(&hash_to_point_base(), &sk_invert)
 }
 
+#[cfg(any(test, feature="testutils"))]
+pub fn try_solve_dlp_kangaroo(pk: &RistrettoPoint) -> Option<Scalar> {
+    use pollard_kangaroo::kangaroo::presets::Presets;
+    use pollard_kangaroo::kangaroo::Kangaroo;
+
+    // start from 16 bits
+    let kangaroo = Kangaroo::from_preset(Presets::Kangaroo16).unwrap();
+    if let Some(sk) = kangaroo.solve_dlp(pk, None).unwrap() {
+        return Some (new_scalar_from_u64(sk))
+    } else {
+       let kangaroo = Kangaroo::from_preset(Presets::Kangaroo32).unwrap();
+       if let Some(sk) = kangaroo.solve_dlp(pk, None).unwrap() {
+            return Some (new_scalar_from_u64(sk))
+       } else {
+       let kangaroo = Kangaroo::from_preset(Presets::Kangaroo48).unwrap();
+            if let Some(sk) = kangaroo.solve_dlp(pk, None).unwrap() {
+                    return Some (new_scalar_from_u64(sk))
+            }
+       }
+    }
+
+    None
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

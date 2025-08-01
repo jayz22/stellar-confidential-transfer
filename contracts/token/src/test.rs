@@ -4,8 +4,7 @@ extern crate std;
 use crate::{
     contract::{ConfidentialToken, MAX_PENDING_BALANCE_COUNTER},
     utils::{
-        read_account_confidential_ext, read_token_confidential_ext, write_account_confidential_ext,
-        write_token_confidential_ext,
+        read_account_confidential_ext, read_balance, read_token_confidential_ext, write_account_confidential_ext, write_token_confidential_ext
     },
     ConfidentialTokenClient,
 };
@@ -15,10 +14,7 @@ use soroban_sdk::{
     Address, Env, FromVal, IntoVal, String, Symbol,
 };
 use stellar_confidential_crypto::{
-    arith::{new_scalar_from_u64, pubkey_from_secret_key},
-    confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness},
-    proof::{self, CompressedPubkeyBytes},
-    ConfidentialAmount, RistrettoPoint, Scalar,
+    arith::{new_scalar_from_u64, pubkey_from_secret_key}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}, proof::{self, CompressedPubkeyBytes}, ConfidentialAmount, ConfidentialBalanceBytes, RistrettoPoint, Scalar
 };
 use stellar_confidential_crypto::{
     confidential_balance::ConfidentialBalance, ConfidentialAmountBytes,
@@ -1692,4 +1688,423 @@ fn test_confidential_transfer_wrong_auditor_key() {
         &src_new_balance,
         &transfer_proof,
     );
+}
+
+#[test]
+fn end_to_end_demo() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    // Step 1: Create token and admin
+    let admin = Address::generate(&e);
+    let token = create_token(&e, &admin);
+
+    // Step 2: Create accounts - Alice, Bob, and Carol (observer)
+    let alice = Address::generate(&e);
+    let bob = Address::generate(&e);
+    let _carol = Address::generate(&e); // Observer who shouldn't be able to decrypt
+
+    // Step 3: Create cryptographic keys for all parties
+    let alice_secret_key = new_scalar_from_u64(11111);
+    let alice_public_key = pubkey_from_secret_key(&alice_secret_key);
+    let alice_compressed_pk = CompressedPubkeyBytes::from_point(&e, &alice_public_key);
+
+    let bob_secret_key = new_scalar_from_u64(22222);
+    let bob_public_key = pubkey_from_secret_key(&bob_secret_key);
+    let bob_compressed_pk = CompressedPubkeyBytes::from_point(&e, &bob_public_key);
+
+    let _carol_secret_key = new_scalar_from_u64(33333); // Carol's key (shouldn't work for decryption)
+
+    // Create auditor key
+    let auditor_secret_key = new_scalar_from_u64(99999);
+    let auditor_public_key = pubkey_from_secret_key(&auditor_secret_key);
+    let auditor_compressed_pk = CompressedPubkeyBytes::from_point(&e, &auditor_public_key);
+
+    // Step 4: Register confidential token extension with auditor
+    token.register_confidential_token(&auditor_compressed_pk);
+
+    // Step 5: Register Alice and Bob for confidential transfers
+    token.register_account(&alice, &alice_compressed_pk);
+    token.register_account(&bob, &bob_compressed_pk);
+
+    // Step 6: Mint tokens to Alice and Bob (transparent balance)
+    let alice_initial_amount = 1000i128;
+    let bob_initial_amount = 500i128;
+    
+    token.mint(&alice, &alice_initial_amount);
+    token.mint(&bob, &bob_initial_amount);
+
+    // Verify initial transparent balances
+    assert_eq!(token.balance(&alice), alice_initial_amount);
+    assert_eq!(token.balance(&bob), bob_initial_amount);
+
+    // Step 7: Alice and Bob make confidential deposits (transparent → confidential pending balance)
+    let alice_deposit_amount = (alice_initial_amount / 2) as u64; // 500
+    let bob_deposit_amount = (bob_initial_amount / 2) as u64;     // 250
+
+    // The deposit() function moves tokens from transparent balance to confidential pending balance
+    // This is the entry point into the confidential transfer system
+    token.deposit(&alice, &alice_deposit_amount);
+    token.deposit(&bob, &bob_deposit_amount);
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //  STATE AFTER MINT AND CONFIDENTIAL DEPOSIT
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //
+    //                    ┌─────────────────────────────────┐
+    //                    │         TOKEN STATE             │
+    //                    │  Total Confidential Supply: 750 │
+    //                    └─────────────────────────────────┘
+    //
+    //   ┌─────────────────────────────┐          ┌─────────────────────────────┐
+    //   │           ALICE             │          │            BOB              │
+    //   │ ┌─────────────────────────┐ │          │ ┌─────────────────────────┐ │
+    //   │ │ Transparent:       500  │ │          │ │ Transparent:       250  │ │
+    //   │ │ Available:           0  │ │          │ │ Available:           0  │ │
+    //   │ │ Pending:           500  │ │          │ │ Pending:           250  │ │
+    //   │ │ Counter:             1  │ │          │ │ Counter:             1  │ │
+    //   │ └─────────────────────────┘ │          │ └─────────────────────────┘ │
+    //   └─────────────────────────────┘          └─────────────────────────────┘
+    //
+    //   Original: 1000 → 500 deposited            Original: 500 → 250 deposited
+    //
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // Dump the state for Sanity check
+    let (token_ext, alice_ext, bob_ext, alice_transparent, bob_transparent) = e.as_contract(&token.address, || {
+        (read_token_confidential_ext(&e),
+        read_account_confidential_ext(&e, alice.clone()),
+        read_account_confidential_ext(&e, bob.clone()),
+        read_balance(&e, alice.clone()),
+        read_balance(&e, bob.clone()))
+    });
+    std::eprintln!("After mint and confidential deposit");
+    std::eprintln!("Token extention: {:?}", token_ext);
+    std::eprintln!("Alice extention: {:?}", alice_ext);
+    std::eprintln!("Alice (transparent) balance: {:?}", alice_transparent);
+    std::eprintln!("Bob extention: {:?}", bob_ext);
+    std::eprintln!("Bob (transparent) balance: {:?}", bob_transparent);
+    
+    // Verify transparent balances after deposits
+    assert_eq!(token.balance(&alice), alice_initial_amount - alice_deposit_amount as i128);
+    assert_eq!(token.balance(&bob), bob_initial_amount - bob_deposit_amount as i128);
+
+    // Step 8: Alice performs rollover to move pending balance to available balance
+    let alice_new_balance_amount = alice_deposit_amount as u128;
+    let balance_pre_normalization = ConfidentialBalance::new_balance_with_no_randomness(alice_new_balance_amount);
+    
+    // Create normalization proof for Alice's rollover
+    let (alice_rollover_proof, alice_new_balance_bytes) = proof::testutils::prove_normalization(
+        &e,
+        &alice_secret_key,
+        &alice_public_key,
+        alice_new_balance_amount,
+        &balance_pre_normalization,
+    );
+
+    token.rollover_pending_balance(
+        &alice,
+        &alice_new_balance_bytes,
+        &alice_rollover_proof,
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // STATE AFTER ALICE'S ROLLOVER (Pending → Available)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //
+    //                    ┌─────────────────────────────────┐
+    //                    │         TOKEN STATE             │
+    //                    │  Total Confidential Supply: 750 │
+    //                    └─────────────────────────────────┘
+    //
+    //   ┌─────────────────────────────┐          ┌─────────────────────────────┐
+    //   │           ALICE             │          │            BOB              │
+    //   │ ┌─────────────────────────┐ │          │ ┌─────────────────────────┐ │
+    //   │ │ Transparent:       500  │ │          │ │ Transparent:       250  │ │
+    //   │ │ Available:         500  │ │◄──────   │ │ Available:           0  │ │
+    //   │ │ Pending:             0  │ │ Rolled   │ │ Pending:           250  │ │
+    //   │ │ Counter:             0  │ │ Over     │ │ Counter:             1  │ │
+    //   │ └─────────────────────────┘ │          │ └─────────────────────────┘ │
+    //   └─────────────────────────────┘          └─────────────────────────────┘
+    //
+    //   Alice can now make confidential transfers!   Bob still needs to rollover
+    //
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // Dump the state for Sanity check
+    let (alice_ext_after_rollover, alice_transparent_after_rollover) = e.as_contract(&token.address, || {
+        (read_account_confidential_ext(&e, alice.clone()),
+         read_balance(&e, alice.clone()))
+    });
+    std::eprintln!("After alice's rollover");
+    std::eprintln!("Alice extention: {:?}", alice_ext_after_rollover);
+    std::eprintln!("Alice (transparent) balance: {:?}", alice_transparent_after_rollover);
+
+    // Step 9: Alice performs confidential transfer to Bob
+    let transfer_amount = 200u64;
+    let alice_new_balance_after_transfer = alice_deposit_amount as u128 - transfer_amount as u128; // 300
+
+    // Get Alice's current balance (after rollover)
+    let alice_current_balance = ConfidentialBalance::from_env_bytes(&alice_new_balance_bytes);
+
+    // Generate transfer proof
+    let (transfer_proof, alice_balance_after_transfer, amount_for_alice, amount_for_bob, amount_for_auditor) =
+        proof::testutils::prove_transfer(
+            &e,
+            &alice_secret_key,
+            &alice_public_key,
+            &bob_public_key,
+            transfer_amount,
+            alice_new_balance_after_transfer,
+            &alice_current_balance,
+            &auditor_public_key,
+        );
+
+    // Execute the confidential transfer
+    token.confidential_transfer(
+        &alice,
+        &bob,
+        &amount_for_alice,
+        &amount_for_bob,
+        &amount_for_auditor,
+        &alice_balance_after_transfer,
+        &transfer_proof,
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // STATE AFTER CONFIDENTIAL TRANSFER (Alice → Bob: 200 tokens)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //
+    //                    ┌─────────────────────────────────┐
+    //                    │         TOKEN STATE             │
+    //                    │  Total Confidential Supply: 750 │
+    //                    └─────────────────────────────────┘
+    //
+    //   ┌─────────────────────────────┐          ┌─────────────────────────────┐
+    //   │           ALICE             │   200    │            BOB              │
+    //   │ ┌─────────────────────────┐ │ ──────►  │ ┌─────────────────────────┐ │
+    //   │ │ Transparent:       500  │ │          │ │ Transparent:       250  │ │
+    //   │ │ Available:         300  │ │          │ │ Available:           0  │ │
+    //   │ │ Pending:             0  │ │          │ │ Pending:           450  │ │
+    //   │ │ Counter:             0  │ │          │ │ Counter:             2  │ │
+    //   │ └─────────────────────────┘ │          │ └─────────────────────────┘ │
+    //   └─────────────────────────────┘          └─────────────────────────────┘
+    //
+    //   Alice sent 200 confidentially            Bob received 200 + had 250 = 450
+    //   (500 - 200 = 300 remaining)              (pending counter increased)
+    //
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // Dump the state for Sanity check
+    let (token_ext_after_transfer, alice_ext_after_transfer, alice_transparent_after_transfer, bob_ext_after_transfer, bob_transparent_after_transfer) = e.as_contract(&token.address, || {
+        (read_token_confidential_ext(&e),
+         read_account_confidential_ext(&e, alice.clone()),
+         read_balance(&e, alice.clone()),
+         read_account_confidential_ext(&e, bob.clone()),
+         read_balance(&e, bob.clone()))
+    });
+    std::eprintln!("After confidential transfer from alice to bob");
+    std::eprintln!("Token extention: {:?}", token_ext_after_transfer);
+    std::eprintln!("Alice extention: {:?}", alice_ext_after_transfer);
+    std::eprintln!("Alice (transparent) balance: {:?}", alice_transparent_after_transfer);
+    std::eprintln!("Bob extention: {:?}", bob_ext_after_transfer);
+    std::eprintln!("Bob (transparent) balance: {:?}", bob_transparent_after_transfer);
+
+    // Step 10: Demonstrate decryption capabilities
+    // Alice can decrypt her amount
+    let alice_decrypted_amount = ConfidentialAmount::from_env_bytes(&amount_for_alice).decrypt(&alice_secret_key);
+    assert_eq!(alice_decrypted_amount as u64, transfer_amount);
+
+    // Bob can decrypt his amount
+    let bob_decrypted_amount = ConfidentialAmount::from_env_bytes(&amount_for_bob).decrypt(&bob_secret_key);
+    assert_eq!(bob_decrypted_amount as u64, transfer_amount);
+
+    // Auditor can decrypt the auditor amount
+    let auditor_decrypted_amount = ConfidentialAmount::from_env_bytes(&amount_for_auditor).decrypt(&auditor_secret_key);
+    assert_eq!(auditor_decrypted_amount as u64, transfer_amount);
+
+    // Alice can decrypt her new balance
+    let alice_decrypted_balance = ConfidentialBalance::from_env_bytes(&alice_balance_after_transfer).decrypt(&alice_secret_key);
+    assert_eq!(alice_decrypted_balance, alice_new_balance_after_transfer);
+
+    // Step 11: Demonstrate that Carol (observer) CANNOT decrypt any amounts
+    // let carol_attempt_alice = ConfidentialAmount::from_env_bytes(&amount_for_alice).decrypt(&carol_secret_key);
+    // assert_ne!(carol_attempt_alice as u64, transfer_amount); // Carol gets wrong value
+
+    // let carol_attempt_bob = ConfidentialAmount::from_env_bytes(&amount_for_bob).decrypt(&carol_secret_key);
+    // assert_ne!(carol_attempt_bob as u64, transfer_amount); // Carol gets wrong value
+
+    // let carol_attempt_auditor = ConfidentialAmount::from_env_bytes(&amount_for_auditor).decrypt(&carol_secret_key);
+    // assert_ne!(carol_attempt_auditor as u64, transfer_amount); // Carol gets wrong value
+
+    // Step 12: Bob performs rollover pending balance action  
+    let bob_received_amount = transfer_amount as u128;    // 200
+    let bob_total_after_rollover = bob_deposit_amount as u128 + bob_received_amount; // 250 + 200 = 450
+
+    let bob_balance_pre_normalization = e.as_contract(&token.address, || {
+        let ext = read_account_confidential_ext(&e, bob.clone());
+        // Bob's pending: 250 (initial confidential deposit) + 200 (received from Alice) = 450
+        // Bob's available: 0 (no previous rollover)
+        let balance = ConfidentialBalanceBytes::add_amount(&e, &ext.available_balance, &ext.pending_balance);
+        ConfidentialBalance::from_env_bytes(&balance)
+    });
+    let (bob_rollover_proof, bob_new_balance_bytes) = proof::testutils::prove_normalization(
+        &e,
+        &bob_secret_key,
+        &bob_public_key,
+        bob_total_after_rollover,
+        &bob_balance_pre_normalization,
+    );
+
+    token.rollover_pending_balance(
+        &bob,
+        &bob_new_balance_bytes,
+        &bob_rollover_proof,
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // STATE AFTER BOB'S ROLLOVER (Pending → Available)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //
+    //                    ┌─────────────────────────────────┐
+    //                    │         TOKEN STATE             │
+    //                    │  Total Confidential Supply: 750 │
+    //                    └─────────────────────────────────┘
+    //
+    //   ┌─────────────────────────────┐          ┌─────────────────────────────┐
+    //   │           ALICE             │          │            BOB              │
+    //   │ ┌─────────────────────────┐ │          │ ┌─────────────────────────┐ │
+    //   │ │ Transparent:       500  │ │          │ │ Transparent:       250  │ │
+    //   │ │ Available:         300  │ │          │ │ Available:         450  │ │◄──────
+    //   │ │ Pending:             0  │ │          │ │ Pending:             0  │ │ Rolled
+    //   │ │ Counter:             0  │ │          │ │ Counter:             0  │ │ Over
+    //   │ └─────────────────────────┘ │          │ └─────────────────────────┘ │
+    //   └─────────────────────────────┘          └─────────────────────────────┘
+    //
+    //   Alice: 300 confidential ready             Bob: 450 confidential ready
+    //          + 500 transparent                         + 250 transparent
+    //
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // Dump the state for Sanity check
+    let (bob_ext_after_rollover, bob_transparent_after_rollover) = e.as_contract(&token.address, || {
+        (read_account_confidential_ext(&e, bob.clone()),
+         read_balance(&e, bob.clone()))
+    });
+    std::eprintln!("After Bob's rollover");
+    std::eprintln!("Bob extention: {:?}", bob_ext_after_rollover);
+    std::eprintln!("Bob (transparent) balance: {:?}", bob_transparent_after_rollover);
+
+    // Step 13: Verify Bob's final balance is correct
+    let bob_final_decrypted_balance = ConfidentialBalance::from_env_bytes(&bob_new_balance_bytes).decrypt(&bob_secret_key);
+    assert_eq!(bob_final_decrypted_balance, bob_total_after_rollover);
+    // Bob's transparent balance should be unchanged, but confidential increased
+    assert_eq!(token.balance(&bob), bob_initial_amount - bob_deposit_amount as i128);    
+
+    // Step 14: Bob performs a withdrawal of 100, check and verify all bob's balances and the token's total_confidential_supply
+    let withdrawal_amount = 100u64;
+    let bob_balance_after_withdrawal = bob_total_after_rollover - withdrawal_amount as u128; // 450 - 100 = 350
+    
+    // Create withdrawal proof
+    let (withdrawal_proof, bob_new_balance_after_withdrawal) = proof::testutils::prove_withdrawal(
+        &e,
+        &bob_secret_key,
+        &bob_public_key,
+        withdrawal_amount,
+        bob_balance_after_withdrawal,
+        &ConfidentialBalance::from_env_bytes(&bob_new_balance_bytes),
+    );
+    
+    // Get Bob's transparent balance before withdrawal
+    let bob_transparent_before_withdrawal = token.balance(&bob);
+    
+    // Get token's total confidential supply before withdrawal
+    let token_supply_before_withdrawal = e.as_contract(&token.address, || {
+        read_token_confidential_ext(&e).total_confidential_supply
+    });
+    
+    // Perform withdrawal
+    token.withdraw(
+        &bob,
+        &withdrawal_amount,
+        &bob_new_balance_after_withdrawal,
+        &withdrawal_proof,
+    );
+    
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // STATE AFTER BOB'S WITHDRAWAL (Confidential → Transparent: 100 tokens)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    //
+    //                    ┌─────────────────────────────────┐
+    //                    │         TOKEN STATE             │
+    //                    │  Total Confidential Supply: 650 │◄─── Decreased!
+    //                    └─────────────────────────────────┘
+    //
+    //   ┌─────────────────────────────┐          ┌─────────────────────────────┐
+    //   │           ALICE             │          │            BOB              │
+    //   │ ┌─────────────────────────┐ │          │ ┌─────────────────────────┐ │
+    //   │ │ Transparent:       500  │ │          │ │ Transparent:       350  │ │◄──────
+    //   │ │ Available:         300  │ │          │ │ Available:         350  │ │ +100
+    //   │ │ Pending:             0  │ │          │ │ Pending:             0  │ │ Withdrawn
+    //   │ │ Counter:             0  │ │          │ │ Counter:             0  │ │
+    //   │ └─────────────────────────┘ │          │ └─────────────────────────┘ │
+    //   └─────────────────────────────┘          └─────────────────────────────┘
+    //
+    //   Alice: Unchanged                          Bob: 100 moved from confidential
+    //          300 + 500 = 800 total                   to transparent (350 + 350 = 700)
+    //
+    //     FINAL ACCOUNTING: Alice(800) + Bob(700) = 1500 total
+    //      Confidential: Alice(300) + Bob(350) = 650
+    //
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // Dump the state for Sanity check
+    let (token_ext_after_withdrawal, bob_ext_after_withdrawal, bob_transparent_after_withdrawal) = e.as_contract(&token.address, || {
+        (read_token_confidential_ext(&e),
+         read_account_confidential_ext(&e, bob.clone()),
+         read_balance(&e, bob.clone()))
+    });
+    std::eprintln!("After Bob's withdrawal of {}", withdrawal_amount);
+    std::eprintln!("Token extention: {:?}", token_ext_after_withdrawal);
+    std::eprintln!("Bob extention: {:?}", bob_ext_after_withdrawal);
+    std::eprintln!("Bob (transparent) balance: {:?}", bob_transparent_after_withdrawal);
+    
+    // Step 15: Verify all balances after withdrawal
+    
+    // Bob's transparent balance should have increased by withdrawal amount
+    let bob_transparent_after_withdrawal = token.balance(&bob);
+    assert_eq!(
+        bob_transparent_after_withdrawal,
+        bob_transparent_before_withdrawal + withdrawal_amount as i128
+    );
+    
+    // Bob's confidential balance should have decreased by withdrawal amount
+    let bob_final_confidential_balance = ConfidentialBalance::from_env_bytes(&bob_new_balance_after_withdrawal).decrypt(&bob_secret_key);
+    assert_eq!(bob_final_confidential_balance, bob_balance_after_withdrawal);
+    
+    // Token's total confidential supply should have decreased by withdrawal amount
+    let token_supply_after_withdrawal = e.as_contract(&token.address, || {
+        read_token_confidential_ext(&e).total_confidential_supply
+    });
+    assert_eq!(
+        token_supply_after_withdrawal,
+        token_supply_before_withdrawal - withdrawal_amount as u128
+    );
+    
+    // Final verification: Complete balance accounting
+    // Alice: 500 transparent, 300 confidential
+    // Bob: 350 transparent (250 original + 100 withdrawn), 350 confidential (450 - 100)
+    // Total confidential supply: 650 (300 Alice + 350 Bob)
+    
+    assert_eq!(token.balance(&alice), alice_initial_amount - alice_deposit_amount as i128); // 500
+    assert_eq!(token.balance(&bob), bob_initial_amount - bob_deposit_amount as i128 + withdrawal_amount as i128); // 350
+    
+    let alice_final_confidential = ConfidentialBalance::from_env_bytes(&alice_balance_after_transfer).decrypt(&alice_secret_key);
+    assert_eq!(alice_final_confidential, 300); // 500 - 200 transferred
+    assert_eq!(bob_final_confidential_balance, 350); // 450 - 100 withdrawn
+    
+    let final_total_confidential_supply = e.as_contract(&token.address, || {
+        read_token_confidential_ext(&e).total_confidential_supply
+    });
+    assert_eq!(final_total_confidential_supply, alice_final_confidential + bob_final_confidential_balance);
 }

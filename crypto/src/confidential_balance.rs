@@ -226,6 +226,37 @@ impl ConfidentialAmount {
         }
         ConfidentialAmount(result_chunks)
     }
+
+    #[cfg(any(test, feature="testutils"))]
+    // the amount is guaruanteed to fit into u64, here we retrieve the u128 which can be truncated safely    
+    pub fn decrypt(&self, dk: &Scalar) -> u128 {
+        use crate::arith::{point_mul, try_solve_dlp_kangaroo};
+        use curve25519_dalek::ristretto::RistrettoPoint;
+        use curve25519_dalek::traits::Identity;
+        
+        let mut result = 0u128;
+        
+        for i in 0..AMOUNT_CHUNKS {
+            // Compute mg = C - d*D = vG (the randomness cancels out)
+            let mg = self.0[i].amount - point_mul(&self.0[i].handle, dk);
+            
+            // Try to solve discrete log using pollard-kangaroo
+            let chunk_value = if mg == RistrettoPoint::identity() {
+                // If mg is the identity point, the chunk value is 0
+                0u64
+            } else if let Some(scalar) = try_solve_dlp_kangaroo(&mg) {
+                // Convert scalar back to u64 - for small values this is safe
+                scalar_to_u64_safe(&scalar)
+            } else {
+                panic!("Failed to decrypt chunk {}: discrete log too large", i);
+            };
+            
+            // Accumulate the chunk value into the result
+            result += (chunk_value as u128) << (i as u64 * CHUNK_SIZE_BITS);
+        }
+        
+        result
+    }    
 }
 
 impl ConfidentialBalance {
@@ -290,6 +321,47 @@ impl ConfidentialBalance {
             self.0[i] = self.0[i].add(&amount.0[i]);
         }
     }
+
+    #[cfg(any(test, feature="testutils"))]
+    pub fn decrypt(&self, dk: &Scalar) -> u128 {
+        use crate::arith::{point_mul, try_solve_dlp_kangaroo};
+        use curve25519_dalek::ristretto::RistrettoPoint;
+        use curve25519_dalek::traits::Identity;
+        
+        let mut result = 0u128;
+        
+        for i in 0..BALANCE_CHUNKS {
+            // Compute mg = C - d*D = vG (the randomness cancels out)
+            let mg = self.0[i].amount - point_mul(&self.0[i].handle, dk);
+            
+            // Try to solve discrete log using pollard-kangaroo
+            let chunk_value = if mg == RistrettoPoint::identity() {
+                // If mg is the identity point, the chunk value is 0
+                0u64
+            } else if let Some(scalar) = try_solve_dlp_kangaroo(&mg) {
+                // Convert scalar back to u64 - for small values this is safe
+                scalar_to_u64_safe(&scalar)
+            } else {
+                panic!("Failed to decrypt chunk {}: discrete log too large", i);
+            };
+            
+            // Accumulate the chunk value into the result
+            result += (chunk_value as u128) << (i as u64 * CHUNK_SIZE_BITS);
+        }
+        
+        result
+    }
+}
+
+#[cfg(any(test, feature="testutils"))]
+fn scalar_to_u64_safe(scalar: &Scalar) -> u64 {
+    // Convert scalar to bytes and then to u64
+    // This is safe for small values (up to 2^64-1)
+    let bytes = scalar.as_bytes();
+    u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+    ])
 }
 
 /// Splits a 64-bit integer amount into four 16-bit chunks, represented as `Scalar` values.
@@ -463,6 +535,355 @@ mod tests {
                     chunks[i].to_bytes()[0] as u64 | ((chunks[i].to_bytes()[1] as u64) << 8);
                 assert_eq!(chunk_value, *expected);
             }
+        }
+    }
+
+    #[test]
+    fn test_confidential_balance_encrypt_decrypt_roundtrip() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        // Test cases with various balance values
+        let test_cases = vec![
+            0u128,                    // Zero
+            1u128,                    // Minimum positive
+            0xffffu128,              // Single chunk maximum (65535)
+            0x1_0000u128,            // Just over single chunk
+            0x1234_5678u128,         // Multiple chunks
+            0xffff_ffff_ffff_ffffu128, // Maximum that fits in 4 chunks
+            0x1234_5678_9abc_def0_1234_5678_9abc_cdefu128, // Large value using all chunks
+        ];
+
+        for balance in test_cases {
+            // Generate test keys
+            let secret_key = new_scalar_from_u64(12345);
+            let public_key = pubkey_from_secret_key(&secret_key);
+            
+            // Create randomness for encryption
+            let randomness = [
+                new_scalar_from_u64(100), new_scalar_from_u64(200), 
+                new_scalar_from_u64(300), new_scalar_from_u64(400),
+                new_scalar_from_u64(500), new_scalar_from_u64(600),
+                new_scalar_from_u64(700), new_scalar_from_u64(800),
+            ];
+            
+            // Encrypt the balance
+            let confidential_balance = ConfidentialBalance::new_balance_from_u128(
+                balance,
+                &randomness,
+                &public_key,
+            );
+            
+            // Decrypt and verify
+            let decrypted_balance = confidential_balance.decrypt(&secret_key);
+            assert_eq!(
+                decrypted_balance, balance,
+                "Failed to decrypt balance: expected {}, got {}",
+                balance, decrypted_balance
+            );
+        }
+    }
+
+    #[test]
+    fn test_confidential_balance_no_randomness_decrypt() {
+        // Test with no randomness (simpler case)
+        let test_balances = vec![0u128, 42u128, 0xffffu128, 0x12345678u128];
+        
+        for balance in test_balances {
+            let confidential_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
+            
+            // With no randomness, we can decrypt with any secret key (handles are identity)
+            let dummy_secret = new_scalar_from_u64(0);
+            let decrypted = confidential_balance.decrypt(&dummy_secret);
+            
+            assert_eq!(
+                decrypted, balance,
+                "No-randomness decrypt failed: expected {}, got {}",
+                balance, decrypted
+            );
+        }
+    }
+
+    #[test]
+    fn test_confidential_balance_zero_chunks() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        let secret_key = new_scalar_from_u64(98765);
+        let public_key = pubkey_from_secret_key(&secret_key);
+        
+        // Balance with many zero chunks
+        let balance = 0x1000u128; // Only chunk 1 has value
+        let randomness = [
+            new_scalar_from_u64(1), new_scalar_from_u64(2), 
+            new_scalar_from_u64(3), new_scalar_from_u64(4),
+            new_scalar_from_u64(5), new_scalar_from_u64(6),
+            new_scalar_from_u64(7), new_scalar_from_u64(8),
+        ];
+        
+        let confidential_balance = ConfidentialBalance::new_balance_from_u128(
+            balance,
+            &randomness,
+            &public_key,
+        );
+        
+        let decrypted = confidential_balance.decrypt(&secret_key);
+        assert_eq!(decrypted, balance);
+    }
+
+    #[test]
+    fn test_confidential_balance_edge_values() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        let secret_key = new_scalar_from_u64(55555);
+        let public_key = pubkey_from_secret_key(&secret_key);
+        
+        // Test edge values for each chunk position
+        let edge_cases = vec![
+            0xffff_0000_0000_0000_0000_0000_0000_0000u128, // Max in chunk 7
+            0x0000_ffff_0000_0000_0000_0000_0000_0000u128, // Max in chunk 6
+            0x0000_0000_0000_0000_ffff_0000_0000_0000u128, // Max in chunk 3
+            0x0000_0000_0000_0000_0000_0000_0000_ffffu128, // Max in chunk 0
+        ];
+        
+        for balance in edge_cases {
+            let randomness = [
+                new_scalar_from_u64(11), new_scalar_from_u64(22), 
+                new_scalar_from_u64(33), new_scalar_from_u64(44),
+                new_scalar_from_u64(55), new_scalar_from_u64(66),
+                new_scalar_from_u64(77), new_scalar_from_u64(88),
+            ];
+            
+            let confidential_balance = ConfidentialBalance::new_balance_from_u128(
+                balance,
+                &randomness,
+                &public_key,
+            );
+            
+            let decrypted = confidential_balance.decrypt(&secret_key);
+            assert_eq!(
+                decrypted, balance,
+                "Edge case failed: expected {:#x}, got {:#x}",
+                balance, decrypted
+            );
+        }
+    }
+
+    #[test]
+    fn test_scalar_to_u64_safe() {
+        use crate::arith::new_scalar_from_u64;
+        
+        let test_values = vec![0u64, 1u64, 42u64, 0xffffu64, 0x12345678u64];
+        
+        for value in test_values {
+            let scalar = new_scalar_from_u64(value);
+            let converted = scalar_to_u64_safe(&scalar);
+            assert_eq!(
+                converted, value,
+                "scalar_to_u64_safe failed: expected {}, got {}",
+                value, converted
+            );
+        }
+    }
+
+    #[test]
+    fn test_confidential_amount_encrypt_decrypt_roundtrip() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        // Test cases with various u64 amounts (since ConfidentialAmount is designed for u64)
+        let test_cases = vec![
+            0u64,                    // Zero
+            1u64,                    // Minimum positive
+            0xffffu64,              // Single chunk maximum (65535)
+            0x1_0000u64,            // Just over single chunk
+            0x1234_5678u64,         // Multiple chunks
+            0xffff_ffff_ffff_ffffu64, // Maximum u64 value
+        ];
+
+        for amount in test_cases {
+            // Generate test keys
+            let secret_key = new_scalar_from_u64(98765);
+            let public_key = pubkey_from_secret_key(&secret_key);
+            
+            // Create randomness for encryption (4 chunks for ConfidentialAmount)
+            let randomness = [
+                new_scalar_from_u64(111), new_scalar_from_u64(222), 
+                new_scalar_from_u64(333), new_scalar_from_u64(444),
+            ];
+            
+            // Encrypt the amount
+            let confidential_amount = ConfidentialAmount::new_amount_from_u64(
+                amount,
+                &randomness,
+                &public_key,
+            );
+            
+            // Decrypt and verify
+            let decrypted_amount = confidential_amount.decrypt(&secret_key);
+            assert_eq!(
+                decrypted_amount as u64, amount,
+                "Failed to decrypt amount: expected {}, got {} (as u64: {})",
+                amount, decrypted_amount, decrypted_amount as u64
+            );
+            
+            // Verify the decrypted value fits safely in u64
+            assert!(
+                decrypted_amount <= u64::MAX as u128,
+                "Decrypted amount {} exceeds u64::MAX", decrypted_amount
+            );
+        }
+    }
+
+    #[test]
+    fn test_confidential_amount_no_randomness_decrypt() {
+        // Test with no randomness (simpler case for amounts)
+        let test_amounts = vec![0u64, 42u64, 0xffffu64, 0x12345678u64, u64::MAX];
+        
+        for amount in test_amounts {
+            let confidential_amount = ConfidentialAmount::new_amount_with_no_randomness(amount);
+            
+            // With no randomness, we can decrypt with any secret key (handles are identity)
+            let dummy_secret = new_scalar_from_u64(0);
+            let decrypted = confidential_amount.decrypt(&dummy_secret);
+            
+            assert_eq!(
+                decrypted as u64, amount,
+                "No-randomness decrypt failed: expected {}, got {} (as u64: {})",
+                amount, decrypted, decrypted as u64
+            );
+        }
+    }
+
+    #[test]
+    fn test_confidential_amount_zero_chunks() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        let secret_key = new_scalar_from_u64(11111);
+        let public_key = pubkey_from_secret_key(&secret_key);
+        
+        // Amount with many zero chunks (only chunk 1 has value)
+        let amount = 0x10000u64; // 65536, which puts value only in chunk 1
+        let randomness = [
+            new_scalar_from_u64(10), new_scalar_from_u64(20), 
+            new_scalar_from_u64(30), new_scalar_from_u64(40),
+        ];
+        
+        let confidential_amount = ConfidentialAmount::new_amount_from_u64(
+            amount,
+            &randomness,
+            &public_key,
+        );
+        
+        let decrypted = confidential_amount.decrypt(&secret_key);
+        assert_eq!(decrypted as u64, amount);
+    }
+
+    #[test]
+    fn test_confidential_amount_edge_values() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        let secret_key = new_scalar_from_u64(77777);
+        let public_key = pubkey_from_secret_key(&secret_key);
+        
+        // Test edge values for each chunk position (4 chunks for amounts)
+        let edge_cases = vec![
+            0xffff_0000_0000_0000u64, // Max in chunk 3
+            0x0000_ffff_0000_0000u64, // Max in chunk 2  
+            0x0000_0000_ffff_0000u64, // Max in chunk 1
+            0x0000_0000_0000_ffffu64, // Max in chunk 0
+            0xffff_ffff_0000_0000u64, // Max in chunks 2,3
+            0x0000_0000_ffff_ffffu64, // Max in chunks 0,1
+        ];
+        
+        for amount in edge_cases {
+            let randomness = [
+                new_scalar_from_u64(101), new_scalar_from_u64(202), 
+                new_scalar_from_u64(303), new_scalar_from_u64(404),
+            ];
+            
+            let confidential_amount = ConfidentialAmount::new_amount_from_u64(
+                amount,
+                &randomness,
+                &public_key,
+            );
+            
+            let decrypted = confidential_amount.decrypt(&secret_key);
+            assert_eq!(
+                decrypted as u64, amount,
+                "Edge case failed: expected {:#x}, got {:#x} (as u64: {:#x})",
+                amount, decrypted, decrypted as u64
+            );
+        }
+    }
+
+    #[test]
+    fn test_confidential_amount_max_values() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        let secret_key = new_scalar_from_u64(99999);
+        let public_key = pubkey_from_secret_key(&secret_key);
+        
+        // Test maximum values
+        let max_values = vec![
+            u64::MAX,                 // Maximum u64
+            0xffff_ffff_ffff_0000u64, // Almost max
+            0x8000_0000_0000_0000u64, // Half of max (MSB set)
+        ];
+        
+        for amount in max_values {
+            let randomness = [
+                new_scalar_from_u64(1001), new_scalar_from_u64(2002), 
+                new_scalar_from_u64(3003), new_scalar_from_u64(4004),
+            ];
+            
+            let confidential_amount = ConfidentialAmount::new_amount_from_u64(
+                amount,
+                &randomness,
+                &public_key,
+            );
+            
+            let decrypted = confidential_amount.decrypt(&secret_key);
+            assert_eq!(
+                decrypted as u64, amount,
+                "Max value test failed: expected {:#x}, got {:#x}",
+                amount, decrypted as u64
+            );
+            
+            // Verify it fits in u64 range
+            assert!(decrypted <= u64::MAX as u128);
+        }
+    }
+
+    #[test]
+    fn test_confidential_amount_different_keys() {
+        use crate::arith::{new_scalar_from_u64, pubkey_from_secret_key};
+        
+        let amount = 0x123456789abcdef0u64;
+        
+        // Test with different key pairs
+        let key_pairs = vec![
+            (new_scalar_from_u64(1), new_scalar_from_u64(1)),
+            (new_scalar_from_u64(12345), new_scalar_from_u64(12345)),
+            (new_scalar_from_u64(u32::MAX as u64), new_scalar_from_u64(u32::MAX as u64)),
+        ];
+        
+        for (encrypt_key, decrypt_key) in key_pairs {
+            let public_key = pubkey_from_secret_key(&encrypt_key);
+            let randomness = [
+                new_scalar_from_u64(555), new_scalar_from_u64(666), 
+                new_scalar_from_u64(777), new_scalar_from_u64(888),
+            ];
+            
+            let confidential_amount = ConfidentialAmount::new_amount_from_u64(
+                amount,
+                &randomness,
+                &public_key,
+            );
+            
+            let decrypted = confidential_amount.decrypt(&decrypt_key);
+            assert_eq!(
+                decrypted as u64, amount,
+                "Different keys test failed with keys ({}, {}): expected {:#x}, got {:#x}",
+                encrypt_key.as_bytes()[0], decrypt_key.as_bytes()[0], amount, decrypted as u64
+            );
         }
     }
 

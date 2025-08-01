@@ -34,6 +34,7 @@ pub enum ConfidentialTokenError {
 pub struct ConfidentialToken;
 
 #[contracttype]
+#[derive(Debug)]
 pub struct TokenConfidentialExt {
     pub enabled_flag: bool, // enable/disable this token's confidential functionalities, controlled by the admin
     pub auditor: CompressedPubkeyBytes,
@@ -41,6 +42,7 @@ pub struct TokenConfidentialExt {
 }
 
 #[contracttype]
+#[derive(Debug)]
 pub struct AccountConfidentialExt {
     pub enabled_flag: bool, // enable/disable this account's confidential functionalities, controlled by the admin
     pub encryption_key: CompressedPubkeyBytes,

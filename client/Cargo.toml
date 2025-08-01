@@ -11,6 +11,7 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 stellar-confidential-crypto = { path = "../crypto" }
+solana-zk-sdk = {workspace = true}
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
