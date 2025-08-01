@@ -11,6 +11,9 @@ name = "stellar_confidential_crypto"
 crate-type = ["lib"]
 doctest = false
 
+[features]
+testutils = ["rand", "sha3"]
+
 [dependencies]
 curve25519-dalek = { workspace = true }
 soroban-sdk = { workspace = true }
@@ -18,7 +21,9 @@ solana-zk-sdk = {workspace = true}
 sha2 = {workspace = true}
 bulletproofs = {workspace = true}
 merlin = {workspace = true}
+rand = { version = "0.8", optional = true }
+sha3 = { version = "0.10.8", optional = true }
 
 [dev-dependencies]
-rand = "0.8"
-sha3 = "0.10.8"
+rand = { version = "0.8"}
+sha3 = { version = "0.10.8"}

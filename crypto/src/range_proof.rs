@@ -6,7 +6,7 @@ use soroban_sdk::{contracttype, Bytes};
 use crate::confidential_balance::{
     ConfidentialAmount, ConfidentialBalance, AMOUNT_CHUNKS, BALANCE_CHUNKS,
 };
-use crate::Error;
+use crate::proof::Error;
 
 // TODO: this module depends on `std`, we need to decouple from it before shipping
 
@@ -133,7 +133,7 @@ pub fn verify_transfer_amount_range_proof(
     verify_range_generic::<AMOUNT_CHUNKS>(&commitments, proof)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature="testutils"))]
 pub mod testutils {
 use super::*;
 use curve25519_dalek::scalar::Scalar;

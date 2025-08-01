@@ -15,3 +15,4 @@ stellar-confidential-crypto = { path = "../../crypto" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+stellar-confidential-crypto = { path = "../../crypto", features = ["testutils"]}

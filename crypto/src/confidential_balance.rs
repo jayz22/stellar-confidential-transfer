@@ -28,7 +28,7 @@ pub struct EncryptedChunkBytes {
 }
 
 #[contracttype]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfidentialBalanceBytes(pub Vec<EncryptedChunkBytes>); // 8 chunks
 
 impl ConfidentialBalanceBytes {
@@ -48,10 +48,16 @@ impl ConfidentialBalanceBytes {
     pub fn zero(e: &Env) -> Self {
         ConfidentialBalance::new_balance_with_no_randomness(0u128).to_env_bytes(e)
     }
+
+    pub fn add_amount(e: &Env, balance: &Self, amount: &ConfidentialAmountBytes) -> Self {
+        let mut balance = ConfidentialBalance::from_env_bytes(balance);
+        balance.add_amount(ConfidentialAmount::from_env_bytes(amount));
+        balance.to_env_bytes(e)
+    }    
 }
 
 #[contracttype]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
 
 impl ConfidentialAmountBytes {
@@ -104,7 +110,7 @@ impl EncryptedChunk {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testutils"))]
     pub fn new(val: &Scalar, randomness: &Scalar, ek: &RistrettoPoint) -> Self {
         EncryptedChunk {
             amount: arith::basepoint_mul(val) + arith::point_mul(&arith::hash_to_point_base(), randomness), // C = vG + rH
@@ -124,6 +130,13 @@ impl EncryptedChunk {
         let handle = arith::bytes_to_point(&bytes.handle.0.to_array());
         EncryptedChunk { amount, handle }
     }
+
+    pub fn add(&self, other: &Self) -> Self {
+        EncryptedChunk {
+            amount: self.amount + other.amount,
+            handle: self.handle + other.handle,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -141,7 +154,7 @@ impl ConfidentialAmount {
         ConfidentialAmount(encrypted_chunks)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testutils"))]
     pub fn new_amount_from_u64(
         amount: u64,
         randomness: &[Scalar; AMOUNT_CHUNKS],
@@ -203,10 +216,7 @@ impl ConfidentialAmount {
     pub fn add(&self, other: &Self) -> Self {
         let mut result_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
         for i in 0..AMOUNT_CHUNKS {
-            result_chunks[i] = EncryptedChunk {
-                amount: self.0[i].amount + other.0[i].amount,
-                handle: self.0[i].handle + other.0[i].handle,
-            };
+            result_chunks[i] = self.0[i].add(&other.0[i]);
         }
         ConfidentialAmount(result_chunks)
     }
@@ -222,7 +232,7 @@ impl ConfidentialBalance {
         ConfidentialBalance(encrypted_chunks)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testutils"))]
     pub fn new_balance_from_u128(
         balance: u128,
         randomness: &[Scalar; BALANCE_CHUNKS],
@@ -268,9 +278,12 @@ impl ConfidentialBalance {
         }
         handles
     }
-    // pub fn to_bytes(&self) -> Vec<u8> {
-    //     self.0.iter().flat_map(|chunk| chunk.to_bytes().0).collect()
-    // }
+
+    pub fn add_amount(&mut self, amount: ConfidentialAmount) {
+        for i in 0..AMOUNT_CHUNKS {
+            self.0[i] = self.0[i].add(&amount.0[i]);
+        }
+    }
 }
 
 /// Splits a 64-bit integer amount into four 16-bit chunks, represented as `Scalar` values.
@@ -303,7 +316,7 @@ pub fn split_into_chunks_u128(balance: u128) -> [Scalar; BALANCE_CHUNKS] {
     res
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature="testutils"))]
 pub mod testutils {
     use crate::arith::point_mul;
 

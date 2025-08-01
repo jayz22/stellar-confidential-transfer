@@ -33,7 +33,7 @@ impl ScalarBytes {
 }
 
 #[contracttype]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompressedPubkeyBytes(BytesN<32>);
 
 impl CompressedPubkeyBytes {
@@ -1027,7 +1027,7 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     new_scalar_from_sha2_512(&bytes)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature="testutils"))]
 pub mod testutils {
     use super::*;
     use crate::{arith::{basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}};

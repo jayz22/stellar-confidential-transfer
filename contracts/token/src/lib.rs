@@ -3,4 +3,4 @@ mod contract;
 mod test;
 mod utils;
 
-pub use crate::contract::TokenClient;
+pub use crate::contract::ConfidentialTokenClient;
