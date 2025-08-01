@@ -1087,6 +1087,7 @@ dependencies = [
 [[package]]
 name = "pollard-kangaroo"
 version = "0.1.0"
+source = "git+https://github.com/jayz22/pollard-kangaroo#f3e6c5848bf1ea8d5bb69381c1114caad049a35c"
 dependencies = [
  "anyhow",
  "bincode",
