@@ -1,7 +1,7 @@
 pub mod arith;
+pub mod confidential_balance;
 pub mod encryption;
 pub mod proof;
-pub mod confidential_balance;
 pub use confidential_balance::*;
 pub mod range_proof;
 

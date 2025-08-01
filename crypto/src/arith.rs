@@ -142,12 +142,12 @@ pub fn new_scalar_from_pow2(exp: u8) -> Scalar {
 pub fn aggregate_scalar_chunks<const N: usize>(chunks: &[Scalar; N]) -> Scalar {
     let mut result = Scalar::default();
     for i in 0..N {
-         result += chunks[i] * new_scalar_from_pow2((i * 16) as u8);
+        result += chunks[i] * new_scalar_from_pow2((i * 16) as u8);
     }
     result
 }
 
-pub fn aggregate_point_chunks<const N: usize>(chunks: &[RistrettoPoint; N]) -> RistrettoPoint{
+pub fn aggregate_point_chunks<const N: usize>(chunks: &[RistrettoPoint; N]) -> RistrettoPoint {
     let mut res = RistrettoPoint::default();
     for i in 0..N {
         res += chunks[i] * new_scalar_from_pow2((i * 16) as u8);
@@ -155,19 +155,18 @@ pub fn aggregate_point_chunks<const N: usize>(chunks: &[RistrettoPoint; N]) -> R
     res
 }
 
-
 /// Calculates the linear combination of the provided scalars.
 /// Computes the sum of element-wise products: sum(lhs[i] * rhs[i]) for all i.
 pub fn scalar_linear_combination(lhs: &[Scalar], rhs: &[Scalar]) -> Scalar {
     assert_eq!(lhs.len(), rhs.len(), "Vectors must have the same length");
-    
+
     let mut result = Scalar::from(0u64);
-    
+
     for (l, r) in lhs.iter().zip(rhs.iter()) {
         let product = scalar_mul(l, r);
         scalar_add_assign(&mut result, &product);
     }
-    
+
     result
 }
 
@@ -175,7 +174,6 @@ pub fn pubkey_from_secret_key(sk: &Scalar) -> RistrettoPoint {
     let sk_invert = scalar_invert(sk);
     point_mul(&hash_to_point_base(), &sk_invert)
 }
-
 
 #[cfg(test)]
 mod tests {

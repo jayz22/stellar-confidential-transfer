@@ -1,13 +1,28 @@
-
 #![cfg(test)]
 extern crate std;
 
-use crate::{contract::{ConfidentialToken, MAX_PENDING_BALANCE_COUNTER}, utils::{read_account_confidential_ext, read_token_confidential_ext, write_account_confidential_ext, write_token_confidential_ext}, ConfidentialTokenClient};
-use soroban_sdk::{
-    symbol_short, testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation}, Address, Env, FromVal, IntoVal, String, Symbol
+use crate::{
+    contract::{ConfidentialToken, MAX_PENDING_BALANCE_COUNTER},
+    utils::{
+        read_account_confidential_ext, read_token_confidential_ext, write_account_confidential_ext,
+        write_token_confidential_ext,
+    },
+    ConfidentialTokenClient,
 };
-use stellar_confidential_crypto::{arith::{new_scalar_from_u64, pubkey_from_secret_key}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}, proof::{self, CompressedPubkeyBytes}, ConfidentialAmount, RistrettoPoint, Scalar};
-use stellar_confidential_crypto::{ConfidentialAmountBytes, confidential_balance::ConfidentialBalance};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
+    Address, Env, FromVal, IntoVal, String, Symbol,
+};
+use stellar_confidential_crypto::{
+    arith::{new_scalar_from_u64, pubkey_from_secret_key},
+    confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness},
+    proof::{self, CompressedPubkeyBytes},
+    ConfidentialAmount, RistrettoPoint, Scalar,
+};
+use stellar_confidential_crypto::{
+    confidential_balance::ConfidentialBalance, ConfidentialAmountBytes,
+};
 
 fn create_token<'a>(e: &Env, admin: &Address) -> ConfidentialTokenClient<'a> {
     let token_contract = e.register(
@@ -310,8 +325,8 @@ fn test_token_confidential_extension() {
 
 #[test]
 fn test_account_confidential_extension_and_disabled_deposit() {
-    use stellar_confidential_crypto::{ConfidentialBalanceBytes, ConfidentialAmountBytes};
-    
+    use stellar_confidential_crypto::{ConfidentialAmountBytes, ConfidentialBalanceBytes};
+
     let e = Env::default();
     e.mock_all_auths();
 
@@ -330,10 +345,12 @@ fn test_account_confidential_extension_and_disabled_deposit() {
     token.register_account(&user, &user_encryption_key);
 
     // Check the AccountConfidentialExt and its fields are expected
-    let account_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, user.clone()));
+    let account_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, user.clone())
+    });
     assert_eq!(account_ext.enabled_flag, true);
     assert_eq!(account_ext.encryption_key, user_encryption_key);
-    
+
     // Check that available_balance and pending_balance are zero
     let zero_balance = ConfidentialBalanceBytes::zero(&e);
     let zero_amount = ConfidentialAmountBytes::zero(&e);
@@ -345,14 +362,15 @@ fn test_account_confidential_extension_and_disabled_deposit() {
     token.set_account_enabled_flag(&user, &false);
 
     // Check that AccountConfidentialExt has been updated with the new flag
-    let updated_account_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, user.clone()));
+    let updated_account_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, user.clone())
+    });
     assert_eq!(updated_account_ext.enabled_flag, false);
 }
 
 #[test]
 #[should_panic(expected = "HostError: Error(Contract, #2)")]
 fn test_deposit_with_disabled_account() {
-    
     let e = Env::default();
     e.mock_all_auths();
 
@@ -403,7 +421,7 @@ fn setup_confidential_token_with_account(e: &Env) -> (ConfidentialTokenClient, A
 #[test]
 fn test_deposit_success() {
     use stellar_confidential_crypto::ConfidentialAmountBytes;
-    
+
     let e = Env::default();
     e.mock_all_auths();
 
@@ -416,18 +434,28 @@ fn test_deposit_success() {
     assert_eq!(token.balance(&user), initial_balance);
 
     // Get initial confidential balances
-    let initial_account_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, user.clone()));
+    let initial_account_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, user.clone())
+    });
     let initial_pending_counter = initial_account_ext.pending_counter;
 
     // Perform deposit
     token.deposit(&user, &deposit_amount);
 
     // Check transparent balance was reduced
-    assert_eq!(token.balance(&user), initial_balance - deposit_amount as i128);
+    assert_eq!(
+        token.balance(&user),
+        initial_balance - deposit_amount as i128
+    );
 
     // Check confidential account state was updated
-    let updated_account_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, user.clone()));
-    assert_eq!(updated_account_ext.pending_counter, initial_pending_counter + 1);
+    let updated_account_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, user.clone())
+    });
+    assert_eq!(
+        updated_account_ext.pending_counter,
+        initial_pending_counter + 1
+    );
 
     // Validate the pending balance (because this is the first deposit, we can check the amount w.r.t amt encrypted with zero randomness)
     let expected_balance = ConfidentialAmountBytes::from_u64_with_no_randomness(&e, deposit_amount);
@@ -452,7 +480,6 @@ fn test_deposit_insufficient_balance() {
     token.deposit(&user, &deposit_amount);
 }
 
-
 #[test]
 #[should_panic(expected = "HostError: Error(Contract, #1)")]
 fn test_deposit_disabled_token() {
@@ -474,7 +501,17 @@ fn test_deposit_disabled_token() {
 }
 
 // Helper function to setup confidential token with deposit and return user keys for proof generation
-fn setup_confidential_token_with_deposit(e: &Env, initial_total_supply: i128, initial_pending_balance: u64) -> (ConfidentialTokenClient, Address, Address, Scalar, RistrettoPoint) {    
+fn setup_confidential_token_with_deposit(
+    e: &Env,
+    initial_total_supply: i128,
+    initial_pending_balance: u64,
+) -> (
+    ConfidentialTokenClient,
+    Address,
+    Address,
+    Scalar,
+    RistrettoPoint,
+) {
     let admin = Address::generate(e);
     let user = Address::generate(e);
     let token = create_token(e, &admin);
@@ -504,14 +541,18 @@ fn test_rollover_pending_balance() {
     e.mock_all_auths();
 
     let initial_pending_balance = 500u64;
-    let (token, _admin, user, user_secret_key, user_public_key) = setup_confidential_token_with_deposit(&e, 1000i128, initial_pending_balance);
+    let (token, _admin, user, user_secret_key, user_public_key) =
+        setup_confidential_token_with_deposit(&e, 1000i128, initial_pending_balance);
 
     // Get account state before rollover
-    let account_ext_before = e.as_contract(&token.address, || read_account_confidential_ext(&e, user.clone()));
+    let account_ext_before = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, user.clone())
+    });
     assert_eq!(account_ext_before.pending_counter, 1);
-    
+
     let new_balance_amount = initial_pending_balance as u128;
-    let balance_pre_normalization = ConfidentialBalance::new_balance_with_no_randomness(new_balance_amount);
+    let balance_pre_normalization =
+        ConfidentialBalance::new_balance_with_no_randomness(new_balance_amount);
 
     // Generate normalization proof for rollover
     let (proof, new_balance_bytes) = proof::testutils::prove_normalization(
@@ -526,17 +567,33 @@ fn test_rollover_pending_balance() {
     token.rollover_pending_balance(&user, &new_balance_bytes, &proof);
 
     // Verify rollover results
-    let account_ext_after = e.as_contract(&token.address, || read_account_confidential_ext(&e, user.clone()));
+    let account_ext_after = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, user.clone())
+    });
     assert_eq!(account_ext_after.pending_counter, 0);
     // Verify pending balance is now zero
-    assert_eq!(account_ext_after.pending_balance, ConfidentialAmountBytes::zero(&e));
+    assert_eq!(
+        account_ext_after.pending_balance,
+        ConfidentialAmountBytes::zero(&e)
+    );
     // Actual balance has been set to the new_balance
     assert_eq!(account_ext_after.available_balance, new_balance_bytes);
 }
 
-
 // Helper function to setup confidential token with deposit and return user keys for proof generation
-fn setup_confidential_token_account_with_balances(e: &Env, initial_available_balance: u64, initial_pending_balance: u64) -> (ConfidentialTokenClient, Address, Address, Scalar, RistrettoPoint, ConfidentialBalance, ConfidentialAmount) {    
+fn setup_confidential_token_account_with_balances(
+    e: &Env,
+    initial_available_balance: u64,
+    initial_pending_balance: u64,
+) -> (
+    ConfidentialTokenClient,
+    Address,
+    Address,
+    Scalar,
+    RistrettoPoint,
+    ConfidentialBalance,
+    ConfidentialAmount,
+) {
     let admin = Address::generate(e);
     let user = Address::generate(e);
     let token = create_token(e, &admin);
@@ -553,8 +610,16 @@ fn setup_confidential_token_account_with_balances(e: &Env, initial_available_bal
     // Register user account
     token.register_account(&user, &user_encryption_key);
 
-    let available_balance = ConfidentialBalance::new_balance_from_u128(initial_available_balance as u128, &generate_balance_randomness(), &user_public_key);
-    let pending_balance = ConfidentialAmount::new_amount_from_u64(initial_pending_balance, &generate_amount_randomness(), &user_public_key);
+    let available_balance = ConfidentialBalance::new_balance_from_u128(
+        initial_available_balance as u128,
+        &generate_balance_randomness(),
+        &user_public_key,
+    );
+    let pending_balance = ConfidentialAmount::new_amount_from_u64(
+        initial_pending_balance,
+        &generate_amount_randomness(),
+        &user_public_key,
+    );
     // let available_balance = ConfidentialBalance::new_balance_with_no_randomness(initial_available_balance as u128);
     // let pending_balance = ConfidentialAmount::new_amount_with_no_randomness(initial_available_balance);
 
@@ -566,11 +631,20 @@ fn setup_confidential_token_account_with_balances(e: &Env, initial_available_bal
         write_account_confidential_ext(&e, user.clone(), &ext);
 
         let mut token_ext = read_token_confidential_ext(&e);
-        token_ext.total_confidential_supply = (initial_available_balance + initial_pending_balance) as u128;
+        token_ext.total_confidential_supply =
+            (initial_available_balance + initial_pending_balance) as u128;
         write_token_confidential_ext(&e, &token_ext);
     });
 
-    (token, admin, user, user_secret_key, user_public_key, available_balance, pending_balance)
+    (
+        token,
+        admin,
+        user,
+        user_secret_key,
+        user_public_key,
+        available_balance,
+        pending_balance,
+    )
 }
 
 #[test]
@@ -581,13 +655,17 @@ fn test_withdraw_success() {
     let initial_available_balance_u64 = 500u64;
     let initial_pending_balance_u64 = 500u64;
 
-    let (token, _admin, user, user_secret_key, user_public_key, 
-        current_balance, _) = setup_confidential_token_account_with_balances(&e, initial_available_balance_u64, initial_pending_balance_u64);
+    let (token, _admin, user, user_secret_key, user_public_key, current_balance, _) =
+        setup_confidential_token_account_with_balances(
+            &e,
+            initial_available_balance_u64,
+            initial_pending_balance_u64,
+        );
 
     // Now test withdrawal
     let withdraw_amount = 200u64;
-    let new_balance_amount_u128 = (initial_available_balance_u64 - withdraw_amount) as u128;    
-    
+    let new_balance_amount_u128 = (initial_available_balance_u64 - withdraw_amount) as u128;
+
     // Generate withdrawal proof
     let (withdraw_proof, withdraw_new_balance) = proof::testutils::prove_withdrawal(
         &e,
@@ -604,15 +682,26 @@ fn test_withdraw_success() {
     });
 
     // Perform withdrawal
-    token.withdraw(&user, &withdraw_amount, &withdraw_new_balance, &withdraw_proof);
+    token.withdraw(
+        &user,
+        &withdraw_amount,
+        &withdraw_new_balance,
+        &withdraw_proof,
+    );
 
     // Verify transparent balance increased
-    assert_eq!(token.balance(&user), transparent_balance_before + withdraw_amount as i128);
+    assert_eq!(
+        token.balance(&user),
+        transparent_balance_before + withdraw_amount as i128
+    );
     // Verify total confidential supply has decreased
     let total_confidential_supply_after = e.as_contract(&token.address, || {
         read_token_confidential_ext(&e).total_confidential_supply
-    });    
-    assert_eq!(total_confidential_supply_after, total_confidential_supply_before - withdraw_amount as u128);
+    });
+    assert_eq!(
+        total_confidential_supply_after,
+        total_confidential_supply_before - withdraw_amount as u128
+    );
 }
 
 #[test]
@@ -624,14 +713,18 @@ fn test_withdraw_wrong_amount() {
     let initial_available_balance_u64 = 500u64;
     let initial_pending_balance_u64 = 500u64;
 
-    let (token, _admin, user, user_secret_key, user_public_key, 
-        current_balance, _) = setup_confidential_token_account_with_balances(&e, initial_available_balance_u64, initial_pending_balance_u64);
+    let (token, _admin, user, user_secret_key, user_public_key, current_balance, _) =
+        setup_confidential_token_account_with_balances(
+            &e,
+            initial_available_balance_u64,
+            initial_pending_balance_u64,
+        );
 
     // Generate proof for one amount but call with different amount
     let withdraw_amount = 200u64;
     let wrong_withdraw_amount = 250u64; // Different amount
     let new_balance_amount = initial_available_balance_u64 - withdraw_amount;
-    
+
     // Generate proof for withdraw_amount
     let (withdraw_proof, withdraw_new_balance) = proof::testutils::prove_withdrawal(
         &e,
@@ -643,7 +736,12 @@ fn test_withdraw_wrong_amount() {
     );
 
     // Try to withdraw with wrong amount - should fail with WithdrawalProofVerificationFailed
-    token.withdraw(&user, &wrong_withdraw_amount, &withdraw_new_balance, &withdraw_proof);
+    token.withdraw(
+        &user,
+        &wrong_withdraw_amount,
+        &withdraw_new_balance,
+        &withdraw_proof,
+    );
 }
 
 #[test]
@@ -655,14 +753,18 @@ fn test_withdraw_wrong_new_balance() {
     let initial_available_balance_u64 = 500u64;
     let initial_pending_balance_u64 = 500u64;
 
-    let (token, _admin, user, user_secret_key, user_public_key, 
-        current_balance, _) = setup_confidential_token_account_with_balances(&e, initial_available_balance_u64, initial_pending_balance_u64);
+    let (token, _admin, user, user_secret_key, user_public_key, current_balance, _) =
+        setup_confidential_token_account_with_balances(
+            &e,
+            initial_available_balance_u64,
+            initial_pending_balance_u64,
+        );
 
     // Test with mismatched new balance
     let withdraw_amount = 200u64;
     let correct_new_balance_amount = initial_available_balance_u64 - withdraw_amount;
     let wrong_new_balance_amount = initial_available_balance_u64 - (withdraw_amount + 50); // Wrong balance
-    
+
     // Generate proof for correct new balance amount
     let (withdraw_proof, _) = proof::testutils::prove_withdrawal(
         &e,
@@ -699,25 +801,25 @@ fn test_withdraw_wrong_new_balance() {
 
 // Helper function to setup confidential token with two accounts for transfer testing
 fn setup_confidential_token_two_accounts(
-    e: &Env, 
-    src_available_balance: u64, 
+    e: &Env,
+    src_available_balance: u64,
     src_pending_balance: u64,
     des_available_balance: u64,
     des_pending_balance: u64,
-    des_pending_counter: Option<u32> // Allow overriding destination pending counter
+    des_pending_counter: Option<u32>, // Allow overriding destination pending counter
 ) -> (
-    ConfidentialTokenClient, 
-    Address, 
-    Address, 
-    Address, 
-    Scalar, 
-    RistrettoPoint, 
-    Scalar, 
+    ConfidentialTokenClient,
+    Address,
+    Address,
+    Address,
+    Scalar,
+    RistrettoPoint,
+    Scalar,
     RistrettoPoint,
     ConfidentialBalance,
     ConfidentialBalance,
-    CompressedPubkeyBytes // auditor key
-) {    
+    CompressedPubkeyBytes, // auditor key
+) {
     let admin = Address::generate(e);
     let src = Address::generate(e);
     let des = Address::generate(e);
@@ -727,11 +829,11 @@ fn setup_confidential_token_two_accounts(
     let auditor_secret_key = new_scalar_from_u64(12345);
     let auditor_public_key = pubkey_from_secret_key(&auditor_secret_key);
     let auditor_key = CompressedPubkeyBytes::from_point(e, &auditor_public_key);
-    
+
     let src_secret_key = new_scalar_from_u64(54321);
     let src_public_key = pubkey_from_secret_key(&src_secret_key);
     let src_encryption_key = CompressedPubkeyBytes::from_point(e, &src_public_key);
-    
+
     let des_secret_key = new_scalar_from_u64(98765);
     let des_public_key = pubkey_from_secret_key(&des_secret_key);
     let des_encryption_key = CompressedPubkeyBytes::from_point(e, &des_public_key);
@@ -744,11 +846,27 @@ fn setup_confidential_token_two_accounts(
     token.register_account(&des, &des_encryption_key);
 
     // Create confidential balances
-    let src_available_balance_conf = ConfidentialBalance::new_balance_from_u128(src_available_balance as u128, &generate_balance_randomness(), &src_public_key);
-    let src_pending_balance_conf = ConfidentialAmount::new_amount_from_u64(src_pending_balance, &generate_amount_randomness(), &src_public_key);
-    
-    let des_available_balance_conf = ConfidentialBalance::new_balance_from_u128(des_available_balance as u128, &generate_balance_randomness(), &des_public_key);
-    let des_pending_balance_conf = ConfidentialAmount::new_amount_from_u64(des_pending_balance, &generate_amount_randomness(), &des_public_key);
+    let src_available_balance_conf = ConfidentialBalance::new_balance_from_u128(
+        src_available_balance as u128,
+        &generate_balance_randomness(),
+        &src_public_key,
+    );
+    let src_pending_balance_conf = ConfidentialAmount::new_amount_from_u64(
+        src_pending_balance,
+        &generate_amount_randomness(),
+        &src_public_key,
+    );
+
+    let des_available_balance_conf = ConfidentialBalance::new_balance_from_u128(
+        des_available_balance as u128,
+        &generate_balance_randomness(),
+        &des_public_key,
+    );
+    let des_pending_balance_conf = ConfidentialAmount::new_amount_from_u64(
+        des_pending_balance,
+        &generate_amount_randomness(),
+        &des_public_key,
+    );
 
     // Set up account states directly
     e.as_contract(&token.address, || {
@@ -769,11 +887,26 @@ fn setup_confidential_token_two_accounts(
 
         // Update total confidential supply
         let mut token_ext = read_token_confidential_ext(&e);
-        token_ext.total_confidential_supply = (src_available_balance + des_available_balance + src_pending_balance + des_pending_balance) as u128;
+        token_ext.total_confidential_supply = (src_available_balance
+            + des_available_balance
+            + src_pending_balance
+            + des_pending_balance) as u128;
         write_token_confidential_ext(&e, &token_ext);
     });
 
-    (token, admin, src, des, src_secret_key, src_public_key, des_secret_key, des_public_key, src_available_balance_conf, des_available_balance_conf, auditor_key)
+    (
+        token,
+        admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        des_secret_key,
+        des_public_key,
+        src_available_balance_conf,
+        des_available_balance_conf,
+        auditor_key,
+    )
 }
 
 #[test]
@@ -783,55 +916,102 @@ fn test_confidential_transfer_success() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Get initial states for verification
-    let initial_src_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, src.clone()));
-    let initial_des_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, des.clone()));
+    let initial_src_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, src.clone())
+    });
+    let initial_des_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, des.clone())
+    });
 
     // Perform confidential transfer
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 
     // Verify state changes
-    let final_src_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, src.clone()));
-    let final_des_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, des.clone()));
+    let final_src_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, src.clone())
+    });
+    let final_des_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, des.clone())
+    });
 
     // Source available balance should be updated
     assert_eq!(final_src_ext.available_balance, src_new_balance);
     // Source pending balance and counter should stay the same
-    assert_eq!(final_src_ext.pending_balance, initial_src_ext.pending_balance);
-    assert_eq!(final_src_ext.pending_counter, initial_src_ext.pending_counter);
+    assert_eq!(
+        final_src_ext.pending_balance,
+        initial_src_ext.pending_balance
+    );
+    assert_eq!(
+        final_src_ext.pending_counter,
+        initial_src_ext.pending_counter
+    );
 
     // Destination pending balance should be updated (encrypted amount is added)
-    assert_ne!(final_des_ext.pending_balance, initial_des_ext.pending_balance);    
+    assert_ne!(
+        final_des_ext.pending_balance,
+        initial_des_ext.pending_balance
+    );
     // Destination pending counter should be incremented
-    assert_eq!(final_des_ext.pending_counter, initial_des_ext.pending_counter + 1);
+    assert_eq!(
+        final_des_ext.pending_counter,
+        initial_des_ext.pending_counter + 1
+    );
     // Destination available balance should stay the same
-    assert_eq!(final_des_ext.available_balance, initial_des_ext.available_balance);
-
+    assert_eq!(
+        final_des_ext.available_balance,
+        initial_des_ext.available_balance
+    );
 }
 
 #[test]
@@ -842,10 +1022,26 @@ fn test_confidential_transfer_destination_disabled() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Disable destination account
@@ -854,24 +1050,33 @@ fn test_confidential_transfer_destination_disabled() {
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Try to perform confidential transfer - should fail with ConfidentialAccountNotEnabled
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -882,33 +1087,58 @@ fn test_confidential_transfer_insufficient_balance() {
 
     let src_initial_balance = 100u64; // Small balance
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Try to transfer more than available balance
     let transfer_amount = 200u64; // More than src_initial_balance
     let wrong_new_src_balance_amount = 1000u64; // Wrong calculation - should cause proof verification to fail
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof with wrong balance calculation
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        wrong_new_src_balance_amount as u128, // This will make the proof invalid
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            wrong_new_src_balance_amount as u128, // This will make the proof invalid
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Try to perform confidential transfer - should fail with TransferProofVerificationFailed
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -919,34 +1149,59 @@ fn test_confidential_transfer_pending_counter_at_maximum() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
+
     // Set destination pending counter to MAX_PENDING_BALANCE_COUNTER
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, Some(MAX_PENDING_BALANCE_COUNTER)
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        Some(MAX_PENDING_BALANCE_COUNTER),
     );
 
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Try to perform confidential transfer - should fail with PendingBalanceCounterAtMaximum
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -957,10 +1212,26 @@ fn test_confidential_transfer_source_disabled() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Disable source account
@@ -969,24 +1240,33 @@ fn test_confidential_transfer_source_disabled() {
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Try to perform confidential transfer - should fail with ConfidentialAccountNotEnabled
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -997,10 +1277,26 @@ fn test_confidential_transfer_token_disabled() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Disable token confidential functionality
@@ -1009,24 +1305,33 @@ fn test_confidential_transfer_token_disabled() {
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Try to perform confidential transfer - should fail with ConfidentialTokenNotEnabled
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -1037,38 +1342,67 @@ fn test_confidential_transfer_mismatched_auditor_amount() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Transfer amounts
     let transfer_amount = 200u64;
     let different_amount = 250u64; // Different amount for auditor
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, _auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, _auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Generate different auditor amount (this should cause verification failure)
-    let different_auditor_amount = ConfidentialAmount::new_amount_from_u64(different_amount, &generate_amount_randomness(), &auditor_public_key);
+    let different_auditor_amount = ConfidentialAmount::new_amount_from_u64(
+        different_amount,
+        &generate_amount_randomness(),
+        &auditor_public_key,
+    );
     let auditor_amount_bytes = different_auditor_amount.to_env_bytes(&e);
 
     // Try to perform confidential transfer with mismatched amounts - should fail with TransferProofVerificationFailed
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount_bytes, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount_bytes,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -1079,36 +1413,65 @@ fn test_confidential_transfer_wrong_current_balance() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        _src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        _src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Create wrong current balance for proof generation
-    let wrong_current_balance = ConfidentialBalance::new_balance_from_u128(2000u128, &generate_balance_randomness(), &src_public_key);
-    
-    // Get auditor public key
-    let auditor_public_key = auditor_key.to_point();
-    
-    // Generate transfer proof with wrong current balance
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
+    let wrong_current_balance = ConfidentialBalance::new_balance_from_u128(
+        2000u128,
+        &generate_balance_randomness(),
         &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &wrong_current_balance, // Wrong balance used in proof
-        &auditor_public_key,
     );
 
+    // Get auditor public key
+    let auditor_public_key = auditor_key.to_point();
+
+    // Generate transfer proof with wrong current balance
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &wrong_current_balance, // Wrong balance used in proof
+            &auditor_public_key,
+        );
+
     // Try to perform confidential transfer - should fail with TransferProofVerificationFailed
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -1119,38 +1482,63 @@ fn test_confidential_transfer_wrong_recipient_key() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, _des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        _des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Create wrong recipient key
     let wrong_recipient_secret = new_scalar_from_u64(99999);
     let wrong_recipient_public = pubkey_from_secret_key(&wrong_recipient_secret);
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof with wrong recipient key
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &wrong_recipient_public, // Wrong recipient key
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &wrong_recipient_public, // Wrong recipient key
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Try to perform confidential transfer - should fail with TransferProofVerificationFailed
     // because the proof was generated with a different recipient key than what's registered
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
 
 #[test]
@@ -1160,49 +1548,86 @@ fn test_confidential_transfer_zero_amount() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Zero transfer amount
     let transfer_amount = 0u64;
     let new_src_balance_amount = src_initial_balance; // Balance should remain the same
-    
+
     // Get auditor public key
     let auditor_public_key = auditor_key.to_point();
-    
+
     // Generate transfer proof
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &auditor_public_key,
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &auditor_public_key,
+        );
 
     // Get initial states for verification
-    let initial_des_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, des.clone()));
+    let initial_des_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, des.clone())
+    });
 
     // Perform confidential transfer (should succeed even with zero amount)
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 
     // Verify state changes
-    let final_src_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, src.clone()));
-    let final_des_ext = e.as_contract(&token.address, || read_account_confidential_ext(&e, des.clone()));
+    let final_src_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, src.clone())
+    });
+    let final_des_ext = e.as_contract(&token.address, || {
+        read_account_confidential_ext(&e, des.clone())
+    });
 
     // Source available balance should be updated (even though amount is zero)
     assert_eq!(final_src_ext.available_balance, src_new_balance);
-    
+
     // Destination pending balance should be updated (even with zero amount)
-    assert_ne!(final_des_ext.pending_balance, initial_des_ext.pending_balance);
-    
+    assert_ne!(
+        final_des_ext.pending_balance,
+        initial_des_ext.pending_balance
+    );
+
     // Destination pending counter should still be incremented
-    assert_eq!(final_des_ext.pending_counter, initial_des_ext.pending_counter + 1);
+    assert_eq!(
+        final_des_ext.pending_counter,
+        initial_des_ext.pending_counter + 1
+    );
 }
 
 #[test]
@@ -1213,34 +1638,58 @@ fn test_confidential_transfer_wrong_auditor_key() {
 
     let src_initial_balance = 1000u64;
     let des_initial_balance = 500u64;
-    
-    let (token, _admin, src, des, src_secret_key, src_public_key, _des_secret_key, des_public_key, 
-        src_current_balance, _des_current_balance, _auditor_key) = setup_confidential_token_two_accounts(
-        &e, src_initial_balance, 0, des_initial_balance, 0, None
+
+    let (
+        token,
+        _admin,
+        src,
+        des,
+        src_secret_key,
+        src_public_key,
+        _des_secret_key,
+        des_public_key,
+        src_current_balance,
+        _des_current_balance,
+        _auditor_key,
+    ) = setup_confidential_token_two_accounts(
+        &e,
+        src_initial_balance,
+        0,
+        des_initial_balance,
+        0,
+        None,
     );
 
     // Transfer amount
     let transfer_amount = 200u64;
     let new_src_balance_amount = src_initial_balance - transfer_amount;
-    
+
     // Create wrong auditor key
     let wrong_auditor_secret = new_scalar_from_u64(77777);
     let wrong_auditor_public = pubkey_from_secret_key(&wrong_auditor_secret);
-    
+
     // Generate transfer proof with wrong auditor key
-    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) = proof::testutils::prove_transfer(
-        &e,
-        &src_secret_key,
-        &src_public_key,
-        &des_public_key,
-        transfer_amount,
-        new_src_balance_amount as u128,
-        &src_current_balance,
-        &wrong_auditor_public, // Wrong auditor key
-    );
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount as u128,
+            &src_current_balance,
+            &wrong_auditor_public, // Wrong auditor key
+        );
 
     // Try to perform confidential transfer - should fail with TransferProofVerificationFailed
     // because the proof was generated with a different auditor key than what's registered
-    token.confidential_transfer(&src, &des, &src_amount, &des_amount, &auditor_amount, &src_new_balance, &transfer_proof);
+    token.confidential_transfer(
+        &src,
+        &des,
+        &src_amount,
+        &des_amount,
+        &auditor_amount,
+        &src_new_balance,
+        &transfer_proof,
+    );
 }
-

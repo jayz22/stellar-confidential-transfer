@@ -1,18 +1,20 @@
+use crate::range_proof::{
+    verify_new_balance_range_proof, verify_transfer_amount_range_proof, RangeProofBytes,
+};
 use crate::{
     arith::{
-        basepoint, bytes_to_point, bytes_to_scalar, hash_to_point_base, new_scalar_from_sha2_512, new_scalar_from_u64, point_to_bytes, aggregate_scalar_chunks, aggregate_point_chunks
+        aggregate_point_chunks, aggregate_scalar_chunks, basepoint, bytes_to_point,
+        bytes_to_scalar, hash_to_point_base, new_scalar_from_sha2_512, new_scalar_from_u64,
+        point_to_bytes,
     },
     confidential_balance::*,
 };
-use crate::range_proof::{verify_new_balance_range_proof, verify_transfer_amount_range_proof, RangeProofBytes};
 use curve25519_dalek::{traits::Identity, RistrettoPoint, Scalar};
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
-
 
 const FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/NewBalanceProofFiatShamir";
 const FIAT_SHAMIR_TRANSFER_SIGMA_DST: &[u8] = b"StellarConfidentialToken/TransferProofFiatShamir";
-
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -197,8 +199,8 @@ pub struct NormalizationSigmaProofXs {
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofAlphas {
     pub a1s: [Scalar; BALANCE_CHUNKS], // hides the unencrypted amount chunks
-    pub a2: Scalar,       // hides dk
-    pub a3: Scalar,       // hides dk^-1
+    pub a2: Scalar,                    // hides dk
+    pub a3: Scalar,                    // hides dk^-1
     pub a4s: [Scalar; BALANCE_CHUNKS], // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
 }
 
@@ -256,10 +258,10 @@ pub struct TransferSigmaProofXs {
 #[derive(Debug, Clone)]
 pub struct TransferSigmaProofAlphas {
     pub a1s: [Scalar; BALANCE_CHUNKS], // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
-    pub a2: Scalar,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
-    pub a3s: [Scalar; AMOUNT_CHUNKS], // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
-    pub a4s: [Scalar; AMOUNT_CHUNKS], // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
-    pub a5: Scalar,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
+    pub a2: Scalar,                    // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
+    pub a3s: [Scalar; AMOUNT_CHUNKS],  // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
+    pub a4s: [Scalar; AMOUNT_CHUNKS],  // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
+    pub a5: Scalar,                    // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
     pub a6s: [Scalar; BALANCE_CHUNKS], // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
 }
 
@@ -294,12 +296,18 @@ impl NewBalanceSigmaProofXs {
 
         let mut x3s = Vec::new(e);
         for i in 0..BALANCE_CHUNKS {
-            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x3s[i]))));
+            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x3s[i]),
+            )));
         }
 
         let mut x4s = Vec::new(e);
         for i in 0..BALANCE_CHUNKS {
-            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x4s[i]))));
+            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x4s[i]),
+            )));
         }
 
         NewBalanceSigmaProofXsBytes { x1, x2, x3s, x4s }
@@ -378,12 +386,18 @@ impl NormalizationSigmaProofXs {
 
         let mut x3s = Vec::new(e);
         for i in 0..BALANCE_CHUNKS {
-            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x3s[i]))));
+            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x3s[i]),
+            )));
         }
 
         let mut x4s = Vec::new(e);
         for i in 0..BALANCE_CHUNKS {
-            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x4s[i]))));
+            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x4s[i]),
+            )));
         }
 
         NormalizationSigmaProofXsBytes { x1, x2, x3s, x4s }
@@ -503,34 +517,52 @@ impl TransferSigmaProofXs {
 
         let mut x2s = Vec::new(e);
         for i in 0..BALANCE_CHUNKS {
-            x2s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x2s[i]))));
+            x2s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x2s[i]),
+            )));
         }
 
         let mut x3s = Vec::new(e);
         for i in 0..AMOUNT_CHUNKS {
-            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x3s[i]))));
+            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x3s[i]),
+            )));
         }
 
         let mut x4s = Vec::new(e);
         for i in 0..AMOUNT_CHUNKS {
-            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x4s[i]))));
+            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x4s[i]),
+            )));
         }
 
         let x5 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x5)));
 
         let mut x6s = Vec::new(e);
         for i in 0..BALANCE_CHUNKS {
-            x6s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x6s[i]))));
+            x6s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x6s[i]),
+            )));
         }
 
         let mut x7s = Vec::new(e);
         for i in 0..AMOUNT_CHUNKS {
-            x7s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x7s[i]))));
+            x7s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x7s[i]),
+            )));
         }
 
         let mut x8s = Vec::new(e);
         for i in 0..AMOUNT_CHUNKS {
-            x8s.push_back(CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x8s[i]))));
+            x8s.push_back(CompressedRistrettoBytes(BytesN::from_array(
+                e,
+                &point_to_bytes(&self.x8s[i]),
+            )));
         }
 
         TransferSigmaProofXsBytes {
@@ -650,7 +682,10 @@ pub fn verify_normalization_proof(
     proof: &NewBalanceProofBytes,
 ) -> Result<(), Error> {
     verify_new_balance_sigma_proof(ek, None, current_balance, new_balance, &proof.sigma_proof)?;
-    verify_new_balance_range_proof(&ConfidentialBalance::from_env_bytes(new_balance), &proof.zkrp_new_balance)?;
+    verify_new_balance_range_proof(
+        &ConfidentialBalance::from_env_bytes(new_balance),
+        &proof.zkrp_new_balance,
+    )?;
     Ok(())
 }
 
@@ -670,8 +705,17 @@ pub fn verify_withdrawal_proof(
     new_balance: &ConfidentialBalanceBytes,
     proof: &NewBalanceProofBytes,
 ) -> Result<(), Error> {
-    verify_new_balance_sigma_proof(ek, Some(amount), current_balance, new_balance, &proof.sigma_proof)?;
-    verify_new_balance_range_proof(&ConfidentialBalance::from_env_bytes(new_balance), &proof.zkrp_new_balance)?;
+    verify_new_balance_sigma_proof(
+        ek,
+        Some(amount),
+        current_balance,
+        new_balance,
+        &proof.sigma_proof,
+    )?;
+    verify_new_balance_range_proof(
+        &ConfidentialBalance::from_env_bytes(new_balance),
+        &proof.zkrp_new_balance,
+    )?;
     Ok(())
 }
 
@@ -710,8 +754,14 @@ pub fn verify_transfer_proof(
         auditor_amount,
         &proof.sigma_proof,
     )?;
-    verify_new_balance_range_proof(&ConfidentialBalance::from_env_bytes(new_balance), &proof.zkrp_new_balance)?;
-    verify_transfer_amount_range_proof(&ConfidentialAmount::from_env_bytes(recipient_amount), &proof.zkrp_transfer_amount)?;
+    verify_new_balance_range_proof(
+        &ConfidentialBalance::from_env_bytes(new_balance),
+        &proof.zkrp_new_balance,
+    )?;
+    verify_transfer_amount_range_proof(
+        &ConfidentialAmount::from_env_bytes(recipient_amount),
+        &proof.zkrp_transfer_amount,
+    )?;
     Ok(())
 }
 
@@ -727,7 +777,6 @@ fn verify_new_balance_sigma_proof(
     new_balance: &ConfidentialBalanceBytes,
     proof: &NewBalanceSigmaProofBytes,
 ) -> Result<(), Error> {
-
     let rho = fiat_shamir_new_balance_sigma_proof_challenge(
         ek,
         amount,
@@ -741,7 +790,7 @@ fn verify_new_balance_sigma_proof(
     let new_balance = ConfidentialBalance::from_env_bytes(new_balance);
     let alphas = NewBalanceSigmaProofAlphas::from_bytes(&proof.alphas)?;
     let xs = NewBalanceSigmaProofXs::from_bytes(&proof.xs)?;
-    
+
     // 1. Balance Preservation Formula
     //      X₁ = (Σ(a₁ᵢ·2¹⁶ⁱ) - ρ·Opt(m))·G + Σ(a₂·2¹⁶ⁱ·D_cur_i) + Σ(ρ·2¹⁶ⁱ·C_cur_i)
     let lhs = xs.x1;
@@ -775,10 +824,11 @@ fn verify_new_balance_sigma_proof(
     let new_cs = new_balance.get_encrypted_balances();
     for i in 0..BALANCE_CHUNKS {
         let lhs = xs.x3s[i];
-        let rhs = alphas.a1s[i] * &basepoint() + alphas.a4s[i] * &hash_to_point_base() + rho * new_cs[i];
+        let rhs =
+            alphas.a1s[i] * &basepoint() + alphas.a4s[i] * &hash_to_point_base() + rho * new_cs[i];
         if lhs.ne(&rhs) {
             return Err(Error::SigmaProtocolVerifyFailed);
-        }        
+        }
     }
 
     // 4. Decryption Handle Correctness Formulas (for each chunk i)
@@ -789,9 +839,9 @@ fn verify_new_balance_sigma_proof(
         let rhs = alphas.a4s[i] * ek + rho * new_ds[i];
         if lhs.ne(&rhs) {
             return Err(Error::SigmaProtocolVerifyFailed);
-        }            
+        }
     }
-    // Below are the actual forms of parameters contained in the proof, these were computed during proving and listed here for convenience 
+    // Below are the actual forms of parameters contained in the proof, these were computed during proving and listed here for convenience
     //
     // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + Σ(D_cur_i·2¹⁶ⁱ)·κ₂
     // X₂ = κ₃·H
@@ -841,7 +891,9 @@ fn verify_transfer_sigma_proof(
     let recipient_amount = ConfidentialAmount::from_env_bytes(recipient_amount);
     let auditor_amount = ConfidentialAmount::from_env_bytes(auditor_amount);
 
-    if !ConfidentialAmount::encrypted_amounts_are_equal(&sender_amount, &recipient_amount) || !ConfidentialAmount::encrypted_amounts_are_equal(&recipient_amount, &auditor_amount) {
+    if !ConfidentialAmount::encrypted_amounts_are_equal(&sender_amount, &recipient_amount)
+        || !ConfidentialAmount::encrypted_amounts_are_equal(&recipient_amount, &auditor_amount)
+    {
         return Err(Error::SigmaProtocolVerifyFailed);
     }
 
@@ -852,13 +904,14 @@ fn verify_transfer_sigma_proof(
     // X₁ = (Σ(a₁ᵢ·2¹⁶ⁱ)·G + Σ(a₆ᵢ·2¹⁶ⁱ)·H - Σ(a₃ᵢ·2¹⁶ⁱ)·H + Σ(a₂·2¹⁶ⁱ)·D_current_balance_i  - Σ(a₂·2¹⁶ⁱ)·D_new_balance_i + Σ(ρ·2¹⁶ⁱ)·C_current_balance_i - Σ(ρ·2¹⁶ⁱ)·C_transfer_amount_i)
     let lhs = xs.x1;
     let mut rhs = aggregate_scalar_chunks(&alphas.a1s) * basepoint();
-    rhs += (aggregate_scalar_chunks(&alphas.a6s) - aggregate_scalar_chunks(&alphas.a3s)) * hash_to_point_base();
-    
+    rhs += (aggregate_scalar_chunks(&alphas.a6s) - aggregate_scalar_chunks(&alphas.a3s))
+        * hash_to_point_base();
+
     let curr_balance_ds = current_balance.get_decryption_handles();
     let new_balance_ds = new_balance.get_decryption_handles();
     rhs += aggregate_point_chunks(&curr_balance_ds) * alphas.a2;
     rhs -= aggregate_point_chunks(&new_balance_ds) * alphas.a2;
-    
+
     let curr_balance_cs = current_balance.get_encrypted_balances();
     let transfer_amount_cs = recipient_amount.get_encrypted_amounts();
     rhs += aggregate_point_chunks(&curr_balance_cs) * rho;
@@ -893,7 +946,9 @@ fn verify_transfer_sigma_proof(
     // X₄ᵢ = a₄ᵢ·G + a₃ᵢ·H + ρ·C_transfer_amount_i
     for i in 0..AMOUNT_CHUNKS {
         let lhs = xs.x4s[i];
-        let rhs = alphas.a4s[i] * basepoint() + alphas.a3s[i] * hash_to_point_base() + rho * transfer_amount_cs[i];
+        let rhs = alphas.a4s[i] * basepoint()
+            + alphas.a3s[i] * hash_to_point_base()
+            + rho * transfer_amount_cs[i];
         if lhs.ne(&rhs) {
             return Err(Error::SigmaProtocolVerifyFailed);
         }
@@ -912,7 +967,9 @@ fn verify_transfer_sigma_proof(
     let new_balance_cs = new_balance.get_encrypted_balances();
     for i in 0..BALANCE_CHUNKS {
         let lhs = xs.x6s[i];
-        let rhs = alphas.a1s[i] * basepoint() + alphas.a6s[i] * hash_to_point_base() + rho * new_balance_cs[i];
+        let rhs = alphas.a1s[i] * basepoint()
+            + alphas.a6s[i] * hash_to_point_base()
+            + rho * new_balance_cs[i];
         if lhs.ne(&rhs) {
             return Err(Error::SigmaProtocolVerifyFailed);
         }
@@ -959,7 +1016,7 @@ fn fiat_shamir_new_balance_sigma_proof_challenge(
     if let Some(amount) = amount {
         for chunk in split_into_chunk_bytes_u64(amount) {
             bytes.extend(chunk);
-        }        
+        }
     }
     bytes.extend(current_balance.to_bytes());
     bytes.extend(new_balance.to_bytes());
@@ -996,10 +1053,10 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     bytes.extend(auditor_ek.0.to_array());
     bytes.extend(current_balance.to_bytes());
     bytes.extend(recipient_amount.to_bytes());
-    for EncryptedChunkBytes{ handle, .. } in &auditor_amount.0 {
+    for EncryptedChunkBytes { handle, .. } in &auditor_amount.0 {
         bytes.extend(handle.to_bytes());
     }
-    for EncryptedChunkBytes{ handle, .. } in &sender_amount.0 {
+    for EncryptedChunkBytes { handle, .. } in &sender_amount.0 {
         bytes.extend(handle.to_bytes());
     }
     bytes.extend(new_balance.to_bytes());
@@ -1027,11 +1084,16 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     new_scalar_from_sha2_512(&bytes)
 }
 
-#[cfg(any(test, feature="testutils"))]
+#[cfg(any(test, feature = "testutils"))]
 pub mod testutils {
     use super::*;
-    use crate::{arith::{basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}};
     use crate::range_proof::testutils::{prove_new_balance_range, prove_transfer_amount_range};
+    use crate::{
+        arith::{basepoint_mul, point_mul, scalar_invert, scalar_mul, scalar_sub},
+        confidential_balance::testutils::{
+            generate_amount_randomness, generate_balance_randomness,
+        },
+    };
     use rand::rngs::OsRng;
 
     pub struct NewBalanceSigmaProofRandomness {
@@ -1046,10 +1108,10 @@ pub mod testutils {
     }
     pub struct TransferSigmaProofRandomness {
         pub k1s: [Scalar; BALANCE_CHUNKS], // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
-        pub k2: Scalar,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
-        pub k3s: [Scalar; AMOUNT_CHUNKS], // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
-        pub k4s: [Scalar; AMOUNT_CHUNKS], // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
-        pub k5: Scalar,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
+        pub k2: Scalar,                    // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
+        pub k3s: [Scalar; AMOUNT_CHUNKS],  // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
+        pub k4s: [Scalar; AMOUNT_CHUNKS],  // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
+        pub k5: Scalar,                    // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
         pub k6s: [Scalar; BALANCE_CHUNKS], // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
     }
 
@@ -1059,12 +1121,12 @@ pub mod testutils {
             for i in 0..BALANCE_CHUNKS {
                 k1s[i] = Scalar::random(&mut OsRng);
             }
-            
+
             let mut k4s = [Scalar::ZERO; BALANCE_CHUNKS];
             for i in 0..BALANCE_CHUNKS {
                 k4s[i] = Scalar::random(&mut OsRng);
             }
-            
+
             Self {
                 k1s,
                 k2: Scalar::random(&mut OsRng),
@@ -1079,22 +1141,22 @@ pub mod testutils {
             for i in 0..BALANCE_CHUNKS {
                 k1s[i] = Scalar::random(&mut OsRng);
             }
-            
+
             let mut k3s = [Scalar::ZERO; AMOUNT_CHUNKS];
             for i in 0..AMOUNT_CHUNKS {
                 k3s[i] = Scalar::random(&mut OsRng);
             }
-            
+
             let mut k4s = [Scalar::ZERO; AMOUNT_CHUNKS];
             for i in 0..AMOUNT_CHUNKS {
                 k4s[i] = Scalar::random(&mut OsRng);
             }
-            
+
             let mut k6s = [Scalar::ZERO; BALANCE_CHUNKS];
             for i in 0..BALANCE_CHUNKS {
                 k6s[i] = Scalar::random(&mut OsRng);
             }
-            
+
             Self {
                 k1s,
                 k2: Scalar::random(&mut OsRng),
@@ -1128,7 +1190,7 @@ pub mod testutils {
     ) -> (NewBalanceProofBytes, ConfidentialBalanceBytes) {
         prove_new_balance(env, dk, ek, Some(amount), new_balance_u128, current_balance)
     }
-    
+
     fn prove_new_balance(
         env: &Env,
         dk: &Scalar,
@@ -1138,7 +1200,8 @@ pub mod testutils {
         current_balance: &ConfidentialBalance,
     ) -> (NewBalanceProofBytes, ConfidentialBalanceBytes) {
         let new_balance_r = generate_balance_randomness();
-        let new_balance = ConfidentialBalance::new_balance_from_u128(new_balance_u128, &new_balance_r, &ek);
+        let new_balance =
+            ConfidentialBalance::new_balance_from_u128(new_balance_u128, &new_balance_r, &ek);
         let new_balance_bytes = new_balance.to_env_bytes(&env);
         let sigma_r = NewBalanceSigmaProofRandomness::generate();
 
@@ -1156,7 +1219,8 @@ pub mod testutils {
         // X₃ᵢ = κ₁ᵢ·G + κ₄ᵢ·H
         let mut x3s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
         for i in 0..BALANCE_CHUNKS {
-            x3s[i] = basepoint_mul(&sigma_r.k1s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k4s[i]);
+            x3s[i] =
+                basepoint_mul(&sigma_r.k1s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k4s[i]);
         }
 
         // X₄ᵢ = κ₄ᵢ·P
@@ -1165,12 +1229,7 @@ pub mod testutils {
             x4s[i] = point_mul(&ek, &sigma_r.k4s[i])
         }
 
-        let proof_xs = NewBalanceSigmaProofXs {
-            x1,
-            x2,
-            x3s,
-            x4s
-        };
+        let proof_xs = NewBalanceSigmaProofXs { x1, x2, x3s, x4s };
 
         let proof_xs_bytes = proof_xs.to_bytes(&env);
 
@@ -1183,7 +1242,7 @@ pub mod testutils {
         );
 
         // create the commitments for each withness
-        
+
         // a₁ᵢ = κ₁ᵢ - ρ·bᵢ
         let new_amount_chunks = split_into_chunks_u128(new_balance_u128);
         let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
@@ -1199,7 +1258,7 @@ pub mod testutils {
         for i in 0..BALANCE_CHUNKS {
             a4s[i] = scalar_sub(&sigma_r.k4s[i], &scalar_mul(&rho, &new_balance_r[i]));
         }
-        let alphas = NewBalanceSigmaProofAlphas{ a1s, a2, a3, a4s };
+        let alphas = NewBalanceSigmaProofAlphas { a1s, a2, a3, a4s };
 
         (
             NewBalanceProofBytes {
@@ -1228,19 +1287,26 @@ pub mod testutils {
         ConfidentialBalanceBytes,
         ConfidentialAmountBytes,
         ConfidentialAmountBytes,
-        ConfidentialAmountBytes
+        ConfidentialAmountBytes,
     ) {
         let amount_r = generate_amount_randomness();
         let new_balance_r = generate_balance_randomness();
-        let new_balance = ConfidentialBalance::new_balance_from_u128(new_balance_u128, &new_balance_r, &sender_ek);
+        let new_balance = ConfidentialBalance::new_balance_from_u128(
+            new_balance_u128,
+            &new_balance_r,
+            &sender_ek,
+        );
         let new_balance_bytes = new_balance.to_env_bytes(&env);
 
         let sigma_r = TransferSigmaProofRandomness::generate();
 
         // encrypt the transfer amount 3 times: sender, recipient, auditors. All with the same randomness.
-        let sender_amount = ConfidentialAmount::new_amount_from_u64(amount_u64, &amount_r, sender_ek);
-        let recipient_amount = ConfidentialAmount::new_amount_from_u64(amount_u64, &amount_r, recipient_ek);
-        let auditor_amount = ConfidentialAmount::new_amount_from_u64(amount_u64, &amount_r, auditor_ek);
+        let sender_amount =
+            ConfidentialAmount::new_amount_from_u64(amount_u64, &amount_r, sender_ek);
+        let recipient_amount =
+            ConfidentialAmount::new_amount_from_u64(amount_u64, &amount_r, recipient_ek);
+        let auditor_amount =
+            ConfidentialAmount::new_amount_from_u64(amount_u64, &amount_r, auditor_ek);
         let sender_amount_bytes = sender_amount.to_env_bytes(&env);
         let recipient_amount_bytes = recipient_amount.to_env_bytes(&env);
         let auditor_amount_bytes = auditor_amount.to_env_bytes(&env);
@@ -1251,9 +1317,12 @@ pub mod testutils {
         // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
         let scalar_g = aggregate_scalar_chunks(&sigma_r.k1s);
         let mut x1 = basepoint_mul(&scalar_g);
-        let scalar_h = scalar_sub(&aggregate_scalar_chunks(&sigma_r.k6s), &aggregate_scalar_chunks(&sigma_r.k3s));
+        let scalar_h = scalar_sub(
+            &aggregate_scalar_chunks(&sigma_r.k6s),
+            &aggregate_scalar_chunks(&sigma_r.k3s),
+        );
         x1 += point_mul(&hash_to_point_base(), &scalar_h);
-        
+
         let curr_balance_ds = current_balance.get_decryption_handles();
         let new_balance_ds = new_balance.get_decryption_handles();
         x1 += point_mul(&aggregate_point_chunks(&curr_balance_ds), &sigma_r.k2);
@@ -1274,7 +1343,8 @@ pub mod testutils {
         // X₄ᵢ = κ₄ᵢ·G + κ₃ᵢ·H
         let mut x4s = [RistrettoPoint::identity(); AMOUNT_CHUNKS];
         for i in 0..AMOUNT_CHUNKS {
-            x4s[i] = basepoint_mul(&sigma_r.k4s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k3s[i]);
+            x4s[i] =
+                basepoint_mul(&sigma_r.k4s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k3s[i]);
         }
 
         // X₅ = κ₅·H
@@ -1283,7 +1353,8 @@ pub mod testutils {
         // X₆ᵢ = κ₁ᵢ·G + κ₆ᵢ·H
         let mut x6s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
         for i in 0..BALANCE_CHUNKS {
-            x6s[i] = basepoint_mul(&sigma_r.k1s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k6s[i]);
+            x6s[i] =
+                basepoint_mul(&sigma_r.k1s[i]) + point_mul(&hash_to_point_base(), &sigma_r.k6s[i]);
         }
 
         // X₇ᵢ = κ₃ᵢ·auditor_ek
@@ -1306,7 +1377,7 @@ pub mod testutils {
             x5,
             x6s,
             x7s,
-            x8s
+            x8s,
         };
 
         let proof_xs_bytes = proof_xs.to_bytes(&env);
@@ -1351,7 +1422,14 @@ pub mod testutils {
             a6s[i] = scalar_sub(&sigma_r.k6s[i], &scalar_mul(&rho, &new_balance_r[i]));
         }
 
-        let alphas = TransferSigmaProofAlphas{ a1s, a2, a3s, a4s, a5, a6s };
+        let alphas = TransferSigmaProofAlphas {
+            a1s,
+            a2,
+            a3s,
+            a4s,
+            a5,
+            a6s,
+        };
 
         (
             TransferProofBytes {
@@ -1373,10 +1451,12 @@ pub mod testutils {
 #[cfg(test)]
 mod tests {
     use crate::arith::pubkey_from_secret_key;
-    use crate::confidential_balance::testutils::{generate_balance_randomness, new_balance_with_mismatched_decryption_handle};
+    use crate::confidential_balance::testutils::{
+        generate_balance_randomness, new_balance_with_mismatched_decryption_handle,
+    };
 
-    use super::*;
     use super::testutils::*;
+    use super::*;
 
     #[test]
     fn test_prove_normalization() {
@@ -1387,10 +1467,20 @@ mod tests {
         {
             // correct normalization
             let balance = 100u128;
-            let current_balance = ConfidentialBalance::new_balance_from_u128(balance, &generate_balance_randomness(), &ek);
-            let (proof, new_balance) = prove_normalization(&env, &dk, &ek, balance, &current_balance);
+            let current_balance = ConfidentialBalance::new_balance_from_u128(
+                balance,
+                &generate_balance_randomness(),
+                &ek,
+            );
+            let (proof, new_balance) =
+                prove_normalization(&env, &dk, &ek, balance, &current_balance);
 
-            let res = verify_normalization_proof(&CompressedPubkeyBytes::from_point(&env, &ek), &current_balance.to_env_bytes(&env), &new_balance, &proof);
+            let res = verify_normalization_proof(
+                &CompressedPubkeyBytes::from_point(&env, &ek),
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &proof,
+            );
             assert!(res.is_ok())
 
             // TODO: add more non-trivial cases
@@ -1405,55 +1495,98 @@ mod tests {
         let ek = pubkey_from_secret_key(&dk);
 
         {
-            // correct transaction    
-            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            // correct transaction
+            let current_balance = ConfidentialBalance::new_balance_from_u128(
+                1000u128,
+                &generate_balance_randomness(),
+                &ek,
+            );
             let amount = 100u64;
             let new_balance = 900u128;
-    
-            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
-    
-            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
+
+            let (proof, new_balance) =
+                prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+
+            let res = verify_withdrawal_proof(
+                &CompressedPubkeyBytes::from_point(&env, &ek),
+                amount,
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &proof,
+            );
             assert!(res.is_ok())
         }
 
         {
-            // wrong public key. 
+            // wrong public key.
             let wrong_ek = pubkey_from_secret_key(&new_scalar_from_u64(345));
-            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let current_balance = ConfidentialBalance::new_balance_from_u128(
+                1000u128,
+                &generate_balance_randomness(),
+                &ek,
+            );
             let amount = 100u64;
             let new_balance = 900u128;
 
-            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
-    
-            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &wrong_ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
+            let (proof, new_balance) =
+                prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+
+            let res = verify_withdrawal_proof(
+                &CompressedPubkeyBytes::from_point(&env, &wrong_ek),
+                amount,
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &proof,
+            );
             assert!(res.is_err())
         }
 
         {
             // wrong balance
             let wrong_ek = pubkey_from_secret_key(&new_scalar_from_u64(345));
-            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let current_balance = ConfidentialBalance::new_balance_from_u128(
+                1000u128,
+                &generate_balance_randomness(),
+                &ek,
+            );
             let amount = 100u64;
             let new_balance = 901u128; // correct balance should be 900
 
-            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
-    
-            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &wrong_ek), amount, &current_balance.to_env_bytes(&env), &new_balance, &proof);
-            assert!(res.is_err())            
+            let (proof, new_balance) =
+                prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+
+            let res = verify_withdrawal_proof(
+                &CompressedPubkeyBytes::from_point(&env, &wrong_ek),
+                amount,
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &proof,
+            );
+            assert!(res.is_err())
         }
 
         {
             // wrong decryption handle
-            let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &ek);
+            let current_balance = ConfidentialBalance::new_balance_from_u128(
+                1000u128,
+                &generate_balance_randomness(),
+                &ek,
+            );
             let amount = 100u64;
             let new_balance = 900u128;
-    
-            let (proof, new_balance) = prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
-            
-            let wrong_balance = new_balance_with_mismatched_decryption_handle(&new_balance, &ek);
-            let res = verify_withdrawal_proof(&CompressedPubkeyBytes::from_point(&env, &ek), amount, &current_balance.to_env_bytes(&env), &wrong_balance, &proof);
-            assert!(res.is_err())
 
+            let (proof, new_balance) =
+                prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
+
+            let wrong_balance = new_balance_with_mismatched_decryption_handle(&new_balance, &ek);
+            let res = verify_withdrawal_proof(
+                &CompressedPubkeyBytes::from_point(&env, &ek),
+                amount,
+                &current_balance.to_env_bytes(&env),
+                &wrong_balance,
+                &proof,
+            );
+            assert!(res.is_err())
         }
     }
 
@@ -1465,7 +1598,11 @@ mod tests {
         let recipient_ek = pubkey_from_secret_key(&new_scalar_from_u64(456));
         let amount_u64 = 100u64;
         let new_balance_u128 = 900u128;
-        let current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &sender_ek);
+        let current_balance = ConfidentialBalance::new_balance_from_u128(
+            1000u128,
+            &generate_balance_randomness(),
+            &sender_ek,
+        );
         let auditor_ek = pubkey_from_secret_key(&new_scalar_from_u64(789));
 
         let (proof, new_balance, sender_amount, recipient_amount, auditor_amounts) = prove_transfer(
@@ -1479,16 +1616,36 @@ mod tests {
             &auditor_ek,
         );
 
-        let res = verify_transfer_proof(&CompressedPubkeyBytes::from_point(&env, &sender_ek), &CompressedPubkeyBytes::from_point(&env, &recipient_ek), &current_balance.to_env_bytes(&env), &new_balance, &sender_amount, &recipient_amount, &CompressedPubkeyBytes::from_point(&env, &auditor_ek), &auditor_amounts, &proof);
+        let res = verify_transfer_proof(
+            &CompressedPubkeyBytes::from_point(&env, &sender_ek),
+            &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
+            &current_balance.to_env_bytes(&env),
+            &new_balance,
+            &sender_amount,
+            &recipient_amount,
+            &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+            &auditor_amounts,
+            &proof,
+        );
 
         assert!(res.is_ok());
 
         {
             // Test 1: Amount and balances don't add up (Balance Preservation Formula failure)
             let wrong_new_balance_u128 = 950u128; // Should be 900, but using 950
-            let wrong_current_balance = ConfidentialBalance::new_balance_from_u128(1000u128, &generate_balance_randomness(), &sender_ek);
-            
-            let (wrong_proof, wrong_new_balance, wrong_sender_amount, wrong_recipient_amount, wrong_auditor_amounts) = prove_transfer(
+            let wrong_current_balance = ConfidentialBalance::new_balance_from_u128(
+                1000u128,
+                &generate_balance_randomness(),
+                &sender_ek,
+            );
+
+            let (
+                wrong_proof,
+                wrong_new_balance,
+                wrong_sender_amount,
+                wrong_recipient_amount,
+                wrong_auditor_amounts,
+            ) = prove_transfer(
                 &env,
                 &sender_dk,
                 &sender_ek,
@@ -1500,17 +1657,17 @@ mod tests {
             );
 
             let res = verify_transfer_proof(
-                &CompressedPubkeyBytes::from_point(&env, &sender_ek), 
-                &CompressedPubkeyBytes::from_point(&env, &recipient_ek), 
+                &CompressedPubkeyBytes::from_point(&env, &sender_ek),
+                &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &current_balance.to_env_bytes(&env), // Using original current_balance
-                &wrong_new_balance, 
-                &wrong_sender_amount, 
-                &wrong_recipient_amount, 
-                &CompressedPubkeyBytes::from_point(&env, &auditor_ek), 
-                &wrong_auditor_amounts, 
-                &wrong_proof
+                &wrong_new_balance,
+                &wrong_sender_amount,
+                &wrong_recipient_amount,
+                &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+                &wrong_auditor_amounts,
+                &wrong_proof,
             );
-            
+
             assert!(res.is_err()); // Should fail balance preservation
         }
 
@@ -1518,19 +1675,19 @@ mod tests {
             // Test 2: Wrong sender key (Key-Pair Relationship failure)
             let wrong_sender_dk = &new_scalar_from_u64(999);
             let wrong_sender_ek = pubkey_from_secret_key(&wrong_sender_dk);
-            
+
             let res = verify_transfer_proof(
                 &CompressedPubkeyBytes::from_point(&env, &wrong_sender_ek), // Wrong sender key
-                &CompressedPubkeyBytes::from_point(&env, &recipient_ek), 
-                &current_balance.to_env_bytes(&env), 
-                &new_balance, 
-                &sender_amount, 
-                &recipient_amount, 
-                &CompressedPubkeyBytes::from_point(&env, &auditor_ek), 
-                &auditor_amounts, 
-                &proof
+                &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &sender_amount,
+                &recipient_amount,
+                &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+                &auditor_amounts,
+                &proof,
             );
-            
+
             assert!(res.is_err()); // Should fail sender key verification
         }
 
@@ -1538,19 +1695,19 @@ mod tests {
             // Test 3: Wrong recipient key (Recipient Decryption Handle failure)
             let wrong_recipient_dk = &new_scalar_from_u64(999);
             let wrong_recipient_ek = pubkey_from_secret_key(&wrong_recipient_dk);
-            
+
             let res = verify_transfer_proof(
-                &CompressedPubkeyBytes::from_point(&env, &sender_ek), 
+                &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &wrong_recipient_ek), // Wrong recipient key
-                &current_balance.to_env_bytes(&env), 
-                &new_balance, 
-                &sender_amount, 
-                &recipient_amount, 
-                &CompressedPubkeyBytes::from_point(&env, &auditor_ek), 
-                &auditor_amounts, 
-                &proof
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &sender_amount,
+                &recipient_amount,
+                &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+                &auditor_amounts,
+                &proof,
             );
-            
+
             assert!(res.is_err()); // Should fail recipient verification
         }
 
@@ -1558,80 +1715,89 @@ mod tests {
             // Test 4: Wrong auditor key (Auditor Decryption Handle failure)
             let wrong_auditor_dk = &new_scalar_from_u64(999);
             let wrong_auditor_ek = pubkey_from_secret_key(&wrong_auditor_dk);
-            
+
             let res = verify_transfer_proof(
-                &CompressedPubkeyBytes::from_point(&env, &sender_ek), 
-                &CompressedPubkeyBytes::from_point(&env, &recipient_ek), 
-                &current_balance.to_env_bytes(&env), 
-                &new_balance, 
-                &sender_amount, 
-                &recipient_amount, 
+                &CompressedPubkeyBytes::from_point(&env, &sender_ek),
+                &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &sender_amount,
+                &recipient_amount,
                 &CompressedPubkeyBytes::from_point(&env, &wrong_auditor_ek), // Wrong auditor key
-                &auditor_amounts, 
-                &proof
+                &auditor_amounts,
+                &proof,
             );
-            
+
             assert!(res.is_err()); // Should fail auditor verification
         }
 
         {
             // Test 5: Mismatched transfer amounts (encrypted_amounts_are_equal failure)
-            let different_amount_r = crate::confidential_balance::testutils::generate_amount_randomness();
-            let wrong_recipient_amount = ConfidentialAmount::new_amount_from_u64(amount_u64 + 1, &different_amount_r, &recipient_ek); // Different amount
+            let different_amount_r =
+                crate::confidential_balance::testutils::generate_amount_randomness();
+            let wrong_recipient_amount = ConfidentialAmount::new_amount_from_u64(
+                amount_u64 + 1,
+                &different_amount_r,
+                &recipient_ek,
+            ); // Different amount
             let wrong_recipient_amount_bytes = wrong_recipient_amount.to_env_bytes(&env);
-            
+
             let res = verify_transfer_proof(
-                &CompressedPubkeyBytes::from_point(&env, &sender_ek), 
-                &CompressedPubkeyBytes::from_point(&env, &recipient_ek), 
-                &current_balance.to_env_bytes(&env), 
-                &new_balance, 
-                &sender_amount, 
+                &CompressedPubkeyBytes::from_point(&env, &sender_ek),
+                &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
+                &current_balance.to_env_bytes(&env),
+                &new_balance,
+                &sender_amount,
                 &wrong_recipient_amount_bytes, // Mismatched amount
-                &CompressedPubkeyBytes::from_point(&env, &auditor_ek), 
-                &auditor_amounts, 
-                &proof
+                &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+                &auditor_amounts,
+                &proof,
             );
-            
+
             assert!(res.is_err()); // Should fail amount equality check
         }
 
         {
             // Test 6: Wrong current balance (used in proof vs verification mismatch)
-            let wrong_current_balance_for_verification = ConfidentialBalance::new_balance_from_u128(2000u128, &generate_balance_randomness(), &sender_ek);
-            
-            let res = verify_transfer_proof(
-                &CompressedPubkeyBytes::from_point(&env, &sender_ek), 
-                &CompressedPubkeyBytes::from_point(&env, &recipient_ek), 
-                &wrong_current_balance_for_verification.to_env_bytes(&env), // Wrong current balance
-                &new_balance, 
-                &sender_amount, 
-                &recipient_amount, 
-                &CompressedPubkeyBytes::from_point(&env, &auditor_ek), 
-                &auditor_amounts, 
-                &proof
+            let wrong_current_balance_for_verification = ConfidentialBalance::new_balance_from_u128(
+                2000u128,
+                &generate_balance_randomness(),
+                &sender_ek,
             );
-            
+
+            let res = verify_transfer_proof(
+                &CompressedPubkeyBytes::from_point(&env, &sender_ek),
+                &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
+                &wrong_current_balance_for_verification.to_env_bytes(&env), // Wrong current balance
+                &new_balance,
+                &sender_amount,
+                &recipient_amount,
+                &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+                &auditor_amounts,
+                &proof,
+            );
+
             assert!(res.is_err()); // Should fail verification
         }
 
         {
             // Test 7: Tampered new balance (New Balance Encryption Correctness failure)
-            let tampered_new_balance = new_balance_with_mismatched_decryption_handle(&new_balance, &sender_ek);
-            
+            let tampered_new_balance =
+                new_balance_with_mismatched_decryption_handle(&new_balance, &sender_ek);
+
             let res = verify_transfer_proof(
-                &CompressedPubkeyBytes::from_point(&env, &sender_ek), 
-                &CompressedPubkeyBytes::from_point(&env, &recipient_ek), 
-                &current_balance.to_env_bytes(&env), 
+                &CompressedPubkeyBytes::from_point(&env, &sender_ek),
+                &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
+                &current_balance.to_env_bytes(&env),
                 &tampered_new_balance, // Tampered new balance
-                &sender_amount, 
-                &recipient_amount, 
-                &CompressedPubkeyBytes::from_point(&env, &auditor_ek), 
-                &auditor_amounts, 
-                &proof
+                &sender_amount,
+                &recipient_amount,
+                &CompressedPubkeyBytes::from_point(&env, &auditor_ek),
+                &auditor_amounts,
+                &proof,
             );
-            
+
             assert!(res.is_err()); // Should fail new balance verification
         }
     }
-
 }

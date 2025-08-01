@@ -1,5 +1,7 @@
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token::{self, TokenInterface}, Address, Env, String, Symbol
+    contract, contracterror, contractimpl, contracttype,
+    token::{self, TokenInterface},
+    Address, Env, String, Symbol,
 };
 use soroban_token_sdk::metadata::TokenMetadata;
 use soroban_token_sdk::TokenUtils;
@@ -7,8 +9,10 @@ use soroban_token_sdk::TokenUtils;
 use crate::utils::*;
 use stellar_confidential_crypto::{
     proof::{
-        verify_withdrawal_proof, verify_transfer_proof, verify_normalization_proof, CompressedPubkeyBytes, NewBalanceProofBytes, TransferProofBytes
-    }, ConfidentialAmountBytes, ConfidentialBalanceBytes
+        verify_normalization_proof, verify_transfer_proof, verify_withdrawal_proof,
+        CompressedPubkeyBytes, NewBalanceProofBytes, TransferProofBytes,
+    },
+    ConfidentialAmountBytes, ConfidentialBalanceBytes,
 };
 
 pub const MAX_PENDING_BALANCE_COUNTER: u32 = 0x10000;
@@ -76,7 +80,7 @@ impl ConfidentialToken {
     // Deposit `amt` from `acc`'s transparent balance into its confidential pending balance (`amt` encrypted with zero randomness)
     pub fn deposit(e: &Env, acc: Address, amt: u64) -> Result<(), ConfidentialTokenError> {
         acc.require_auth();
-        
+
         // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
         let mut token_ext = read_token_confidential_ext(e);
         if !token_ext.enabled_flag {
@@ -98,7 +102,11 @@ impl ConfidentialToken {
         spend_balance(e, acc.clone(), amt as i128);
 
         // Encrypt the `amt` using zero randomness (`r = 0`) into `encrypted_amt`, add the `encrypted_amt` to the `pending_balance`.
-        acc_ext.pending_balance = ConfidentialAmountBytes::add(e, &acc_ext.pending_balance, &ConfidentialAmountBytes::from_u64_with_no_randomness(e, amt));
+        acc_ext.pending_balance = ConfidentialAmountBytes::add(
+            e,
+            &acc_ext.pending_balance,
+            &ConfidentialAmountBytes::from_u64_with_no_randomness(e, amt),
+        );
 
         // Increment `acc`'s `pending_balance_counter`
         acc_ext.pending_counter += 1;
@@ -189,7 +197,7 @@ impl ConfidentialToken {
         if !token_ext.enabled_flag {
             return Err(ConfidentialTokenError::ConfidentialTokenNotEnabled);
         }
-        
+
         // load the `src`'s confidential extention, fail if doesn't exist or not enabled
         let mut src_ext = read_account_confidential_ext(e, src.clone());
         if !src_ext.enabled_flag {
@@ -209,15 +217,15 @@ impl ConfidentialToken {
 
         // Verifies the transfer proof.
         verify_transfer_proof(
-            &src_ext.encryption_key,           // sender_ek
-            &des_ext.encryption_key,           // recipient_ek
-            &src_ext.available_balance,        // current_balance
-            &src_new_balance,                  // new_balance
-            &amt_src,                          // sender_amount
-            &amt_des,                          // recipient_amount
-            &token_ext.auditor,                // auditor_ek
-            &amt_auditor,                      // auditor_amount
-            &proof,                            // proof
+            &src_ext.encryption_key,    // sender_ek
+            &des_ext.encryption_key,    // recipient_ek
+            &src_ext.available_balance, // current_balance
+            &src_new_balance,           // new_balance
+            &amt_src,                   // sender_amount
+            &amt_des,                   // recipient_amount
+            &token_ext.auditor,         // auditor_ek
+            &amt_auditor,               // auditor_amount
+            &proof,                     // proof
         )
         .map_err(|_| ConfidentialTokenError::TransferProofVerificationFailed)?;
 
@@ -226,7 +234,8 @@ impl ConfidentialToken {
         write_account_confidential_ext(e, src.clone(), &src_ext);
 
         // Adds `amt_des` to `des` account's `pending_balance`.
-        des_ext.pending_balance = ConfidentialAmountBytes::add(e, &des_ext.pending_balance, &amt_des);
+        des_ext.pending_balance =
+            ConfidentialAmountBytes::add(e, &des_ext.pending_balance, &amt_des);
 
         // Increase `des`'s `pending_balance_counter`
         des_ext.pending_counter += 1;
@@ -260,7 +269,11 @@ impl ConfidentialToken {
             return Err(ConfidentialTokenError::ConfidentialAccountNotEnabled);
         }
 
-        let balance_pre_normalization = ConfidentialBalanceBytes::add_amount(e, &acc_ext.available_balance, &acc_ext.pending_balance);
+        let balance_pre_normalization = ConfidentialBalanceBytes::add_amount(
+            e,
+            &acc_ext.available_balance,
+            &acc_ext.pending_balance,
+        );
 
         // verifies the NewBalanceProofBytes using verify_normalization_proof
         // The proof should demonstrate that new_balance = current_available_balance + pending_balance

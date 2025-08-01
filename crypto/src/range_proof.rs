@@ -54,7 +54,6 @@ pub struct AmountRangeProofResult {
     pub commitments: Vec<CompressedRistretto>,
 }
 
-
 // Generic helper function to verify range proofs
 fn verify_range_generic<const N: usize>(
     commitments: &[CompressedRistretto],
@@ -73,7 +72,7 @@ fn verify_range_generic<const N: usize>(
         RangeProof::from_bytes(&proof_bytes).map_err(|_| Error::RangeProofVerificationFailed)?;
 
     // TODO: the `verify_multiple_with_rng` on `std`, we need to decouple from it.
-    // Either by calling `prove_multiple_with_rng` function and pass in a 
+    // Either by calling `prove_multiple_with_rng` function and pass in a
     // non-std dependent rng (RngCore + CryptoRng), or move the bulletproof
     // verification entirely to the host side.
 
@@ -133,119 +132,118 @@ pub fn verify_transfer_amount_range_proof(
     verify_range_generic::<AMOUNT_CHUNKS>(&commitments, proof)
 }
 
-#[cfg(any(test, feature="testutils"))]
+#[cfg(any(test, feature = "testutils"))]
 pub mod testutils {
-use super::*;
-use curve25519_dalek::scalar::Scalar;
-use soroban_sdk::Env;
+    use super::*;
+    use curve25519_dalek::scalar::Scalar;
+    use soroban_sdk::Env;
 
-// Generic function to chunk a value into N 16-bit chunks.  For compatibility
-// with the bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_value<const N: usize>(value: u128) -> [u64; N] {
-    let mut chunks = [0u64; N];
-    for i in 0..N {
-        let masked = (value >> (i * 16)) & 0xFFFF;
-        assert!(masked <= u16::MAX as u128, "Chunk exceeds u16 max");
-        chunks[i] = masked as u64;
+    // Generic function to chunk a value into N 16-bit chunks.  For compatibility
+    // with the bulletproofs library, this extends each chunk to 64 bits.
+    fn chunk_value<const N: usize>(value: u128) -> [u64; N] {
+        let mut chunks = [0u64; N];
+        for i in 0..N {
+            let masked = (value >> (i * 16)) & 0xFFFF;
+            assert!(masked <= u16::MAX as u128, "Chunk exceeds u16 max");
+            chunks[i] = masked as u64;
+        }
+        chunks
     }
-    chunks
-}
 
-// Chunks a u128 value into 8 16-bit chunks. For compatibility with the
-// bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_u128(value: u128) -> [u64; 8] {
-    chunk_value::<8>(value)
-}
+    // Chunks a u128 value into 8 16-bit chunks. For compatibility with the
+    // bulletproofs library, this extends each chunk to 64 bits.
+    fn chunk_u128(value: u128) -> [u64; 8] {
+        chunk_value::<8>(value)
+    }
 
-// Chunks a u64 value into 4 16-bit chunks. For compatibility with the
-// bulletproofs library, this extends each chunk to 64 bits.
-fn chunk_u64(value: u64) -> [u64; 4] {
-    chunk_value::<4>(value as u128)
-}
+    // Chunks a u64 value into 4 16-bit chunks. For compatibility with the
+    // bulletproofs library, this extends each chunk to 64 bits.
+    fn chunk_u64(value: u64) -> [u64; 4] {
+        chunk_value::<4>(value as u128)
+    }
 
+    // Generic helper function to create range proofs for chunked values. Provides a
+    // proof that each chunk is in the range [0, 2^num_bits). With the exception of
+    // testing, `num_bits` should always be `BULLETPROOFS_NUM_BITS` (16).
+    pub(crate) fn prove_range_generic<const N: usize>(
+        env: &Env,
+        chunks: &[u64; N],
+        randomness: &[Scalar; N],
+        num_bits: usize,
+    ) -> (RangeProofBytes, Vec<CompressedRistretto>) {
+        // Create bulletproof generators
+        let pc_gens = PedersenGens::default();
+        let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
 
-// Generic helper function to create range proofs for chunked values. Provides a
-// proof that each chunk is in the range [0, 2^num_bits). With the exception of
-// testing, `num_bits` should always be `BULLETPROOFS_NUM_BITS` (16).
-pub(crate) fn prove_range_generic<const N: usize>(
-    env: &Env,
-    chunks: &[u64; N],
-    randomness: &[Scalar; N],
-    num_bits: usize,
-) -> (RangeProofBytes, Vec<CompressedRistretto>) {
-    // Create bulletproof generators
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+        // Create transcript with domain separation
+        let mut transcript = Transcript::new(BULLETPROOFS_DST);
 
-    // Create transcript with domain separation
-    let mut transcript = Transcript::new(BULLETPROOFS_DST);
+        // Create the batched range proof for all chunks, each proving value is in
+        // [0, 2^16)
+        let (proof, commitments) = RangeProof::prove_multiple(
+            &bp_gens,
+            &pc_gens,
+            &mut transcript,
+            chunks,
+            randomness,
+            num_bits,
+        )
+        .expect("Failed to create range proof");
 
-    // Create the batched range proof for all chunks, each proving value is in
-    // [0, 2^16)
-    let (proof, commitments) = RangeProof::prove_multiple(
-        &bp_gens,
-        &pc_gens,
-        &mut transcript,
-        chunks,
-        randomness,
-        num_bits,
-    )
-    .expect("Failed to create range proof");
+        // Serialize the proof
+        let proof_bytes = proof.to_bytes();
+        (
+            RangeProofBytes(Bytes::from_slice(env, &proof_bytes)),
+            commitments,
+        )
+    }
 
-    // Serialize the proof
-    let proof_bytes = proof.to_bytes();
-    (
-        RangeProofBytes(Bytes::from_slice(env, &proof_bytes)),
-        commitments,
-    )
-}
+    /// Creates a zero-knowledge range proof for a 128-bit balance value.
+    ///
+    /// This function splits the balance into 8 chunks of 16 bits each and creates a
+    /// bulletproof demonstrating that each chunk is within the valid range
+    /// [0, 2^16).
+    pub fn prove_new_balance_range(
+        env: &Env,
+        new_balance: u128,
+        randomness: &[Scalar; BALANCE_CHUNKS],
+    ) -> BalanceRangeProofResult {
+        // Split balance into chunks
+        let chunks = chunk_u128(new_balance);
 
+        // Use generic helper to create the range proof
+        let (proof, commitments) =
+            prove_range_generic(env, &chunks, randomness, BULLETPROOFS_NUM_BITS);
 
-/// Creates a zero-knowledge range proof for a 128-bit balance value.
-///
-/// This function splits the balance into 8 chunks of 16 bits each and creates a
-/// bulletproof demonstrating that each chunk is within the valid range
-/// [0, 2^16).
-pub fn prove_new_balance_range(
-    env: &Env,
-    new_balance: u128,
-    randomness: &[Scalar; BALANCE_CHUNKS],
-) -> BalanceRangeProofResult {
-    // Split balance into chunks
-    let chunks = chunk_u128(new_balance);
+        // Serialize the proof
+        BalanceRangeProofResult { proof, commitments }
+    }
 
-    // Use generic helper to create the range proof
-    let (proof, commitments) = prove_range_generic(env, &chunks, randomness, BULLETPROOFS_NUM_BITS);
+    /// Creates a zero-knowledge range proof for a 64-bit transfer amount.
+    ///
+    /// This function splits the amount into 4 chunks of 16 bits each and creates a
+    /// bulletproof demonstrating that each chunk is within the valid range
+    /// [0, 2^16).
+    pub fn prove_transfer_amount_range(
+        env: &Env,
+        new_amount: u64,
+        randomness: &[Scalar; AMOUNT_CHUNKS],
+    ) -> AmountRangeProofResult {
+        // Split amount into chunks
+        let chunks = chunk_u64(new_amount);
 
-    // Serialize the proof
-    BalanceRangeProofResult { proof, commitments }
-}
+        // Use generic helper to create the range proof
+        let (proof, commitments) =
+            prove_range_generic(env, &chunks, randomness, BULLETPROOFS_NUM_BITS);
 
-/// Creates a zero-knowledge range proof for a 64-bit transfer amount.
-///
-/// This function splits the amount into 4 chunks of 16 bits each and creates a
-/// bulletproof demonstrating that each chunk is within the valid range
-/// [0, 2^16).
-pub fn prove_transfer_amount_range(
-    env: &Env,
-    new_amount: u64,
-    randomness: &[Scalar; AMOUNT_CHUNKS],
-) -> AmountRangeProofResult {
-    // Split amount into chunks
-    let chunks = chunk_u64(new_amount);
-
-    // Use generic helper to create the range proof
-    let (proof, commitments) = prove_range_generic(env, &chunks, randomness, BULLETPROOFS_NUM_BITS);
-
-    AmountRangeProofResult { proof, commitments }
-}
-
+        AmountRangeProofResult { proof, commitments }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::testutils::*;
+    use super::*;
     use crate::arith;
     use crate::confidential_balance::EncryptedChunk;
     use curve25519_dalek::ristretto::RistrettoPoint;
@@ -298,7 +296,7 @@ mod tests {
         let balance = 12345u128;
         let randomness = [Scalar::ZERO; BALANCE_CHUNKS];
         let result = prove_new_balance_range(&env, balance, &randomness);
-        
+
         // But create commitments for a different balance
         let wrong_balance = 54321u128;
         let confidential_balance =

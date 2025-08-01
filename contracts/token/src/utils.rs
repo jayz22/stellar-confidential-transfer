@@ -2,9 +2,9 @@ use soroban_sdk::{contracttype, Address, Env, String};
 use stellar_confidential_crypto::{ConfidentialAmountBytes, ConfidentialBalanceBytes};
 
 use crate::contract::{AccountConfidentialExt, TokenConfidentialExt};
-use stellar_confidential_crypto::proof::CompressedPubkeyBytes;
 use soroban_token_sdk::metadata::TokenMetadata;
 use soroban_token_sdk::TokenUtils;
+use stellar_confidential_crypto::proof::CompressedPubkeyBytes;
 
 pub(crate) const DAY_IN_LEDGERS: u32 = 17280;
 pub(crate) const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
@@ -203,7 +203,7 @@ pub fn init_acc_confidential_ext(e: &Env, acc: Address, ek: CompressedPubkeyByte
         enabled_flag: true,
         encryption_key: ek,
         available_balance: ConfidentialBalanceBytes::zero(e), // Initialize with zero balance
-        pending_balance: ConfidentialAmountBytes::zero(e),    // Initialize with zero pending balance
+        pending_balance: ConfidentialAmountBytes::zero(e), // Initialize with zero pending balance
         pending_counter: 0,
     };
     e.storage().persistent().set(&key, &ext);

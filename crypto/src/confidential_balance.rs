@@ -32,14 +32,14 @@ pub struct EncryptedChunkBytes {
 pub struct ConfidentialBalanceBytes(pub Vec<EncryptedChunkBytes>); // 8 chunks
 
 impl ConfidentialBalanceBytes {
-    pub fn to_bytes(&self) -> [u8; 2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BITS]{
+    pub fn to_bytes(&self) -> [u8; 2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BITS] {
         assert_eq!(self.0.len() as usize, BALANCE_CHUNKS);
         let mut bytes = [0u8; 512];
-        let mut i = 0;        
+        let mut i = 0;
         for chunk in self.0.iter() {
-            bytes[i..i+32].copy_from_slice(&chunk.amount.0.to_array());
-            bytes[i+32..i+64].copy_from_slice(&chunk.handle.0.to_array());
-            i+=64;
+            bytes[i..i + 32].copy_from_slice(&chunk.amount.0.to_array());
+            bytes[i + 32..i + 64].copy_from_slice(&chunk.handle.0.to_array());
+            i += 64;
         }
         debug_assert!(i == 512);
         bytes
@@ -53,7 +53,7 @@ impl ConfidentialBalanceBytes {
         let mut balance = ConfidentialBalance::from_env_bytes(balance);
         balance.add_amount(ConfidentialAmount::from_env_bytes(amount));
         balance.to_env_bytes(e)
-    }    
+    }
 }
 
 #[contracttype]
@@ -61,14 +61,14 @@ impl ConfidentialBalanceBytes {
 pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
 
 impl ConfidentialAmountBytes {
-    pub fn to_bytes(&self) -> [u8; 2 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BITS]{
+    pub fn to_bytes(&self) -> [u8; 2 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BITS] {
         assert_eq!(self.0.len() as usize, AMOUNT_CHUNKS);
         let mut bytes = [0u8; 256];
-        let mut i = 0;        
+        let mut i = 0;
         for chunk in self.0.iter() {
-            bytes[i..i+32].copy_from_slice(&chunk.amount.0.to_array());
-            bytes[i+32..i+64].copy_from_slice(&chunk.handle.0.to_array());
-            i+=64;
+            bytes[i..i + 32].copy_from_slice(&chunk.amount.0.to_array());
+            bytes[i + 32..i + 64].copy_from_slice(&chunk.handle.0.to_array());
+            i += 64;
         }
         debug_assert!(i == 256);
         bytes
@@ -113,15 +113,22 @@ impl EncryptedChunk {
     #[cfg(any(test, feature = "testutils"))]
     pub fn new(val: &Scalar, randomness: &Scalar, ek: &RistrettoPoint) -> Self {
         EncryptedChunk {
-            amount: arith::basepoint_mul(val) + arith::point_mul(&arith::hash_to_point_base(), randomness), // C = vG + rH
-            handle: arith::point_mul(ek, randomness) , // D = r*P
-        }        
+            amount: arith::basepoint_mul(val)
+                + arith::point_mul(&arith::hash_to_point_base(), randomness), // C = vG + rH
+            handle: arith::point_mul(ek, randomness), // D = r*P
+        }
     }
 
     pub fn to_env_bytes(&self, e: &Env) -> EncryptedChunkBytes {
         EncryptedChunkBytes {
-            amount: CompressedRistrettoBytes(BytesN::<32>::from_array(e, &arith::point_to_bytes(&self.amount))),
-            handle: CompressedRistrettoBytes(BytesN::<32>::from_array(e, &arith::point_to_bytes(&self.handle))),
+            amount: CompressedRistrettoBytes(BytesN::<32>::from_array(
+                e,
+                &arith::point_to_bytes(&self.amount),
+            )),
+            handle: CompressedRistrettoBytes(BytesN::<32>::from_array(
+                e,
+                &arith::point_to_bytes(&self.handle),
+            )),
         }
     }
 
@@ -168,14 +175,13 @@ impl ConfidentialAmount {
         ConfidentialAmount(encrypted_chunks)
     }
 
-
     pub fn from_env_bytes(bytes: &ConfidentialAmountBytes) -> Self {
         assert_eq!(bytes.0.len() as usize, AMOUNT_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
         for i in 0..AMOUNT_CHUNKS {
             encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
         }
-        ConfidentialAmount(encrypted_chunks)        
+        ConfidentialAmount(encrypted_chunks)
     }
 
     pub fn to_env_bytes(&self, e: &Env) -> ConfidentialAmountBytes {
@@ -203,11 +209,11 @@ impl ConfidentialAmount {
     }
 
     // this just compare chunk by chunk, that each pair of chunks are the same value
-    // it does *not* account for normalization semantics.  
+    // it does *not* account for normalization semantics.
     pub fn encrypted_amounts_are_equal(lhs: &Self, rhs: &Self) -> bool {
         for i in 0..AMOUNT_CHUNKS {
             if lhs.0[i].amount != rhs.0[i].amount {
-                return false
+                return false;
             }
         }
         true
@@ -293,11 +299,11 @@ pub fn split_into_chunks_u64(amount: u64) -> [Scalar; AMOUNT_CHUNKS] {
         let chunk = (amount >> (i as u64 * CHUNK_SIZE_BITS)) & 0xffff;
         res[i] = new_scalar_from_u64(chunk);
     }
-    res    
+    res
 }
 
 /// Splits a 64-bit integer amount into four 16-bit chunks, represented as `ScalarBytes` values.
-pub fn split_into_chunk_bytes_u64(amount: u64) ->  [[u8; 32]; AMOUNT_CHUNKS] {
+pub fn split_into_chunk_bytes_u64(amount: u64) -> [[u8; 32]; AMOUNT_CHUNKS] {
     let mut res = [[0; 32]; AMOUNT_CHUNKS];
     for i in 0..AMOUNT_CHUNKS {
         let chunk = (amount >> (i as u64 * CHUNK_SIZE_BITS)) & 0xffff;
@@ -316,7 +322,7 @@ pub fn split_into_chunks_u128(balance: u128) -> [Scalar; BALANCE_CHUNKS] {
     res
 }
 
-#[cfg(any(test, feature="testutils"))]
+#[cfg(any(test, feature = "testutils"))]
 pub mod testutils {
     use crate::arith::point_mul;
 
@@ -339,7 +345,10 @@ pub mod testutils {
         res
     }
 
-    pub fn new_balance_with_mismatched_decryption_handle(correct_balance: &ConfidentialBalanceBytes, ek: &RistrettoPoint) -> ConfidentialBalanceBytes {
+    pub fn new_balance_with_mismatched_decryption_handle(
+        correct_balance: &ConfidentialBalanceBytes,
+        ek: &RistrettoPoint,
+    ) -> ConfidentialBalanceBytes {
         let r = generate_balance_randomness();
         let mut wrong_balance = ConfidentialBalance::from_env_bytes(correct_balance);
         for i in 0..BALANCE_CHUNKS {
@@ -389,13 +398,13 @@ mod tests {
     // fn test_encrypted_chunk_different_values_produce_different_bytes() {
     //     let scalar1 = new_scalar_from_u64(100);
     //     let scalar2 = new_scalar_from_u64(200);
-        
+
     //     let chunk1 = EncryptedChunk::new_chunk_no_randomness(&scalar1);
     //     let chunk2 = EncryptedChunk::new_chunk_no_randomness(&scalar2);
-        
+
     //     let bytes1 = chunk1.to_bytes();
     //     let bytes2 = chunk2.to_bytes();
-        
+
     //     // Different values should produce different serializations
     //     assert_ne!(bytes1.0, bytes2.0);
     // }
@@ -413,10 +422,10 @@ mod tests {
     //     let balance = 0x0123456789ABCDEFu128;
     //     let conf_balance = ConfidentialBalance::new_balance_with_no_randomness(balance);
     //     let bytes = conf_balance.to_bytes();
-        
+
     //     // Should have 8 chunks * 64 bytes per chunk = 512 bytes
     //     assert_eq!(bytes.len(), 512);
-        
+
     //     // Verify we can reconstruct each chunk
     //     for i in 0..8 {
     //         let chunk_bytes = EncryptedChunkBytes(bytes[i*64..(i+1)*64].to_vec());
@@ -439,16 +448,19 @@ mod tests {
             (0u64, vec![0, 0, 0, 0]),
             (0xffffu64, vec![0xffff, 0, 0, 0]),
             (0x1234_5678u64, vec![0x5678, 0x1234, 0, 0]),
-            (0x1234_5678_9abc_def0u64, vec![0xdef0, 0x9abc, 0x5678, 0x1234]),
+            (
+                0x1234_5678_9abc_def0u64,
+                vec![0xdef0, 0x9abc, 0x5678, 0x1234],
+            ),
         ];
-        
+
         for (value, expected_chunks) in test_cases {
             let chunks = split_into_chunks_u64(value);
             assert_eq!(chunks.len(), 4);
-            
+
             for (i, expected) in expected_chunks.iter().enumerate() {
-                let chunk_value = chunks[i].to_bytes()[0] as u64 
-                    | ((chunks[i].to_bytes()[1] as u64) << 8);
+                let chunk_value =
+                    chunks[i].to_bytes()[0] as u64 | ((chunks[i].to_bytes()[1] as u64) << 8);
                 assert_eq!(chunk_value, *expected);
             }
         }
@@ -462,17 +474,19 @@ mod tests {
             (0xffffu128, vec![0xffff, 0, 0, 0, 0, 0, 0, 0]),
             (
                 0x0123_4567_89ab_cdef_0123_4567_89ab_cdefu128,
-                vec![0xcdef, 0x89ab, 0x4567, 0x0123, 0xcdef, 0x89ab, 0x4567, 0x0123],
+                vec![
+                    0xcdef, 0x89ab, 0x4567, 0x0123, 0xcdef, 0x89ab, 0x4567, 0x0123,
+                ],
             ),
         ];
-        
+
         for (value, expected_chunks) in test_cases {
             let chunks = split_into_chunks_u128(value);
             assert_eq!(chunks.len(), 8);
-            
+
             for (i, expected) in expected_chunks.iter().enumerate() {
-                let chunk_value = chunks[i].to_bytes()[0] as u64 
-                    | ((chunks[i].to_bytes()[1] as u64) << 8);
+                let chunk_value =
+                    chunks[i].to_bytes()[0] as u64 | ((chunks[i].to_bytes()[1] as u64) << 8);
                 assert_eq!(chunk_value, *expected);
             }
         }
