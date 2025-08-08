@@ -11,6 +11,7 @@ use crate::{
 };
 use curve25519_dalek::{traits::Identity, RistrettoPoint, Scalar};
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
+use core::iter::Extend;
 
 const FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/NewBalanceProofFiatShamir";

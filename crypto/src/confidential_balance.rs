@@ -4,6 +4,7 @@ use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
 use soroban_sdk::{contracttype, BytesN, Env, Vec};
+use core::{assert_eq, debug_assert};
 
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
@@ -433,6 +434,7 @@ pub mod testutils {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     // #[test]
     // fn test_encrypted_chunk_serialization() {

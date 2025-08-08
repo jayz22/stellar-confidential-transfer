@@ -213,10 +213,8 @@ dependencies = [
 [[package]]
 name = "bulletproofs"
 version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "012e2e5f88332083bd4235d445ae78081c00b2558443821a9ca5adfe1070073d"
+source = "git+https://github.com/jayz22/bulletproofs.git?branch=main#4a340be7965238c3bf432c2a7beb2f11c9d3732e"
 dependencies = [
- "byteorder",
  "clear_on_drop",
  "curve25519-dalek",
  "digest",

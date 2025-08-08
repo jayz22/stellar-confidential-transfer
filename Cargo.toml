@@ -10,9 +10,9 @@ members = [
 curve25519-dalek = "4.1.3"
 soroban-sdk = "22.0.7"
 soroban-token-sdk = "22.0.1"
-sha2 = "0.10.9"
-bulletproofs = "5.0.0"
-merlin = "3.0.0"
+sha2 = { version = "0.10.9", default-features = false }
+bulletproofs = { version = "5.0.0", git = "https://github.com/jayz22/bulletproofs.git", branch = "main", default-features = false }
+merlin = { version = "3.0.0", default-features = false }
 rand = "0.8.5"
 
 [profile.release]

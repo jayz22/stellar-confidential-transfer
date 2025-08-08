@@ -8,7 +8,11 @@ use crate::confidential_balance::{
 };
 use crate::proof::Error;
 
-// TODO: this module depends on `std`, we need to decouple from it before shipping
+use core::default::Default;
+use core::iter::Iterator;
+use core::convert::Into;
+use core::convert::TryInto;
+use alloc::vec::Vec;
 
 const BULLETPROOFS_NUM_BITS: usize = 16;
 // Max bitsize for range proofs
@@ -61,7 +65,7 @@ fn verify_range_generic<const N: usize>(
 ) -> Result<(), Error> {
     // Create the same bulletproof generators used in proving
     let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+    let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY * N);
 
     // Create transcript with the same domain separation
     let mut transcript = Transcript::new(BULLETPROOFS_DST);
@@ -173,7 +177,7 @@ pub mod testutils {
     ) -> (RangeProofBytes, Vec<CompressedRistretto>) {
         // Create bulletproof generators
         let pc_gens = PedersenGens::default();
-        let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY, N);
+        let bp_gens = BulletproofGens::new(RANGEPROOF_GENS_CAPACITY * N);
 
         // Create transcript with domain separation
         let mut transcript = Transcript::new(BULLETPROOFS_DST);
@@ -251,7 +255,7 @@ mod tests {
     use curve25519_dalek::Scalar;
     use rand::rngs::OsRng;
     use soroban_sdk::Env;
-    use std::array;
+    use core::array;
 
     #[test]
     fn test_prove_and_verify_new_balance_range() {

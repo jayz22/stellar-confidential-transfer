@@ -1,4 +1,5 @@
 #![no_std]
+
 mod contract;
 mod test;
 mod utils;

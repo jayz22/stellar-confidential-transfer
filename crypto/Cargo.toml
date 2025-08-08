@@ -12,13 +12,13 @@ crate-type = ["lib"]
 doctest = false
 
 [features]
-testutils = ["rand", "sha3", "pollard-kangaroo"]
+testutils = ["rand", "sha3", "pollard-kangaroo", "bulletproofs/std"]
 
 [dependencies]
 curve25519-dalek = { workspace = true }
-soroban-sdk = { workspace = true }
+soroban-sdk = { workspace = true, features = ["alloc"]}
 sha2 = {workspace = true}
-bulletproofs = {workspace = true}
+bulletproofs = {workspace = true, default-features = false}
 merlin = {workspace = true}
 rand = { version = "0.8", optional = true }
 sha3 = { version = "0.10.8", optional = true }

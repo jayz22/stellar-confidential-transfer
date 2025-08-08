@@ -7,7 +7,11 @@ test: build
 
 build:
 	stellar contract build
-	@ls -l target/wasm32v1-none/release/*.wasm
+	mkdir -p opt/
+	stellar contract optimize \
+		--wasm ../../target/wasm32v1-none/release/confidential_token.wasm \
+		--wasm-out opt/confidential_token.wasm
+	@ls -l opt/*.wasm
 
 fmt:
 	cargo fmt --all

@@ -1,3 +1,7 @@
+#![no_std]
+
+extern crate alloc;
+
 pub mod arith;
 pub mod confidential_balance;
 pub mod proof;

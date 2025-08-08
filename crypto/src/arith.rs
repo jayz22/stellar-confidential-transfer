@@ -3,6 +3,8 @@ use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use sha2::Sha512;
+use core::{assert, assert_eq};
+use alloc::vec::Vec;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// scalar helpers
@@ -205,6 +207,8 @@ pub fn try_solve_dlp_kangaroo(pk: &RistrettoPoint) -> Option<Scalar> {
 mod tests {
     use super::*;
     use curve25519_dalek::traits::Identity;
+
+    use alloc::vec;
 
     // Check that our hash_to_point_base function produces the expected point.
     #[test]
