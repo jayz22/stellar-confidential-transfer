@@ -8,7 +8,6 @@ use crate::confidential_balance::{
 };
 use crate::proof::Error;
 
-use core::default::Default;
 use core::iter::Iterator;
 use core::convert::Into;
 use core::convert::TryInto;
@@ -74,11 +73,6 @@ fn verify_range_generic<const N: usize>(
     let proof_bytes: Vec<u8> = proof.0.iter().collect();
     let range_proof =
         RangeProof::from_bytes(&proof_bytes).map_err(|_| Error::RangeProofVerificationFailed)?;
-
-    // TODO: the `verify_multiple_with_rng` on `std`, we need to decouple from it.
-    // Either by calling `prove_multiple_with_rng` function and pass in a
-    // non-std dependent rng (RngCore + CryptoRng), or move the bulletproof
-    // verification entirely to the host side.
 
     // Verify the range proof
     range_proof

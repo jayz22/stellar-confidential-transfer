@@ -19,7 +19,7 @@ curve25519-dalek = { workspace = true }
 soroban-sdk = { workspace = true, features = ["alloc"]}
 sha2 = {workspace = true}
 bulletproofs = {workspace = true, default-features = false}
-merlin = {workspace = true}
+merlin = {workspace = true, default-features = false}
 rand = { version = "0.8", optional = true }
 sha3 = { version = "0.10.8", optional = true }
 pollard-kangaroo = { version = "0.1.0", optional = true, git = "https://github.com/jayz22/pollard-kangaroo" }
