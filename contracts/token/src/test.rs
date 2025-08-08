@@ -9,9 +9,7 @@ use crate::{
     ConfidentialTokenClient,
 };
 use soroban_sdk::{
-    symbol_short,
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
-    Address, Env, FromVal, IntoVal, String, Symbol,
+    symbol_short, testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation}, xdr::{FromXdr, ToXdr}, Address, Env, FromVal, IntoVal, String, Symbol
 };
 use stellar_confidential_crypto::{
     arith::{new_scalar_from_u64, pubkey_from_secret_key}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}, proof::{self, CompressedPubkeyBytes}, ConfidentialAmount, ConfidentialBalanceBytes, RistrettoPoint, Scalar
@@ -2107,4 +2105,106 @@ fn end_to_end_demo() {
         read_token_confidential_ext(&e).total_confidential_supply
     });
     assert_eq!(final_total_confidential_supply, alice_final_confidential + bob_final_confidential_balance);
+}
+
+
+mod confidential_token_contract {
+    soroban_sdk::contractimport!(file = "opt/confidential_token.wasm");
+}
+
+#[test]
+fn test_confidential_transfer_wasm_contract() {
+    // setup env and contract client
+    let e = Env::default();
+    e.mock_all_auths();
+    e.cost_estimate().budget().reset_unlimited();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(confidential_token_contract::WASM, 
+        (
+            &admin,
+            7_u32,
+            String::from_val(&e, &"name"),
+            String::from_val(&e, &"symbol"),
+        )        
+    );
+    let client = confidential_token_contract::Client::new(&e, &contract_id);
+
+    // set up accounts, token ext
+    let src = Address::generate(&e);
+    let des = Address::generate(&e);
+
+    let auditor_secret_key = new_scalar_from_u64(12345);
+    let auditor_public_key = pubkey_from_secret_key(&auditor_secret_key);
+    let auditor_key = CompressedPubkeyBytes::from_point(&e, &auditor_public_key);
+
+    let src_secret_key = new_scalar_from_u64(54321);
+    let src_public_key = pubkey_from_secret_key(&src_secret_key);
+    let src_encryption_key = CompressedPubkeyBytes::from_point(&e, &src_public_key);
+
+    let des_secret_key = new_scalar_from_u64(98765);
+    let des_public_key = pubkey_from_secret_key(&des_secret_key);
+    let des_encryption_key = CompressedPubkeyBytes::from_point(&e, &des_public_key);
+
+    client.register_confidential_token(&confidential_token_contract::CompressedPubkeyBytes(auditor_key.0.clone()));
+    client.register_account(
+        &src,
+        &confidential_token_contract::CompressedPubkeyBytes(src_encryption_key.0),
+    );
+    client.register_account(
+        &des,
+        &confidential_token_contract::CompressedPubkeyBytes(des_encryption_key.0),
+    );
+
+    // set up initial balances
+    client.mint(&src, &1000);
+    client.mint(&des, &1000);
+
+    client.deposit(&src, &700); // src balances: clear - 300, pending - 700, available - 0
+    e.cost_estimate().budget().print();
+    e.cost_estimate().budget().reset_unlimited();
+
+    // Create normalization proof for src's rollover
+    let (rollover_proof, new_balance_bytes) = proof::testutils::prove_normalization(
+        &e,
+        &src_secret_key,
+        &src_public_key,
+        700,
+        &ConfidentialBalance::new_balance_with_no_randomness(700),
+    );    
+    let new_balance_bytes = confidential_token_contract::ConfidentialBalanceBytes::from_xdr(&e, &new_balance_bytes.to_xdr(&e)).unwrap();
+    let proof = confidential_token_contract::NewBalanceProofBytes::from_xdr(&e, &rollover_proof.to_xdr(&e)).unwrap();
+
+    client.rollover_pending_balance(&src, &new_balance_bytes, &proof); // src balances: clear - 300, pending - 0, available - 700
+    e.cost_estimate().budget().print();
+    e.cost_estimate().budget().reset_unlimited();
+    
+    // Transfer amount
+    let transfer_amount = 200u64;
+    let new_src_balance_amount = 500u128; // 700 - 200
+
+    let src_current_balance = e.as_contract(&contract_id, || {
+        let src_ext = read_account_confidential_ext(&e, src.clone());
+        src_ext.available_balance
+    });
+
+    // Generate transfer proof
+    let (transfer_proof, src_new_balance, src_amount, des_amount, auditor_amount) =
+        proof::testutils::prove_transfer(
+            &e,
+            &src_secret_key,
+            &src_public_key,
+            &des_public_key,
+            transfer_amount,
+            new_src_balance_amount,
+            &ConfidentialBalance::from_env_bytes(&src_current_balance),
+            &auditor_key.to_point(),
+        );
+    let amt_src = confidential_token_contract::ConfidentialAmountBytes::from_xdr(&e, &src_amount.to_xdr(&e)).unwrap();
+    let amt_des = confidential_token_contract::ConfidentialAmountBytes::from_xdr(&e, &des_amount.to_xdr(&e)).unwrap();
+    let amt_auditor = confidential_token_contract::ConfidentialAmountBytes::from_xdr(&e, &auditor_amount.to_xdr(&e)).unwrap();
+    let src_new_balance = confidential_token_contract::ConfidentialBalanceBytes::from_xdr(&e, &src_new_balance.to_xdr(&e)).unwrap();
+    let proof = confidential_token_contract::TransferProofBytes::from_xdr(&e, &transfer_proof.to_xdr(&e)).unwrap();
+    client.confidential_transfer(&src, &des, &amt_src, &amt_des, &amt_auditor, &src_new_balance, &proof);
+    e.cost_estimate().budget().print();
+    e.cost_estimate().budget().reset_unlimited();
 }

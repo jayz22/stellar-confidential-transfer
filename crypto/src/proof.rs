@@ -37,7 +37,7 @@ impl ScalarBytes {
 
 #[contracttype]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompressedPubkeyBytes(BytesN<32>);
+pub struct CompressedPubkeyBytes(pub BytesN<32>);
 
 impl CompressedPubkeyBytes {
     pub fn to_point(&self) -> RistrettoPoint {
