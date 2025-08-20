@@ -952,6 +952,25 @@ fn test_confidential_transfer_success() {
             &auditor_public_key,
         );
 
+    // Print bytes size of each component in the transfer_proof
+    std::eprintln!("=== TRANSFER PROOF COMPONENT SIZES ===");
+    
+    // Convert to XDR to get actual bytes sizes
+    let transfer_proof_xdr = transfer_proof.clone().to_xdr(&e);
+    std::eprintln!("Total transfer_proof size: {} bytes", transfer_proof_xdr.len());
+    
+    // First-level components
+    let sigma_proof_xdr = transfer_proof.sigma_proof.clone().to_xdr(&e);
+    std::eprintln!("sigma_proof size: {} bytes", sigma_proof_xdr.len());
+    
+    let zkrp_new_balance_xdr = transfer_proof.zkrp_new_balance.clone().to_xdr(&e);
+    std::eprintln!("zkrp_new_balance size: {} bytes", zkrp_new_balance_xdr.len());
+    
+    let zkrp_transfer_amount_xdr = transfer_proof.zkrp_transfer_amount.clone().to_xdr(&e);
+    std::eprintln!("zkrp_transfer_amount size: {} bytes", zkrp_transfer_amount_xdr.len());
+    
+    std::eprintln!("=======================================");
+
     // Get initial states for verification
     let initial_src_ext = e.as_contract(&token.address, || {
         read_account_confidential_ext(&e, src.clone())
