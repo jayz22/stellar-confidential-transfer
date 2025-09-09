@@ -3,6 +3,7 @@ extern crate std;
 
 use crate::{
     contract::{ConfidentialToken, MAX_PENDING_BALANCE_COUNTER},
+    testutil::*,
     utils::{
         read_account_confidential_ext, read_balance, read_token_confidential_ext, write_account_confidential_ext, write_token_confidential_ext
     },
@@ -18,18 +19,6 @@ use stellar_confidential_crypto::{
     confidential_balance::ConfidentialBalance, ConfidentialAmountBytes,
 };
 
-fn create_token<'a>(e: &Env, admin: &Address) -> ConfidentialTokenClient<'a> {
-    let token_contract = e.register(
-        ConfidentialToken,
-        (
-            admin,
-            7_u32,
-            String::from_val(e, &"name"),
-            String::from_val(e, &"symbol"),
-        ),
-    );
-    ConfidentialTokenClient::new(e, &token_contract)
-}
 
 #[test]
 fn test() {
@@ -434,7 +423,9 @@ fn test_deposit_success() {
     let initial_pending_counter = initial_account_ext.pending_counter;
 
     // Perform deposit
+    let start = std::time::Instant::now();
     token.deposit(&user, &deposit_amount);
+    std::eprintln!("deposit took: {:?}", start.elapsed());
 
     // Check transparent balance was reduced
     assert_eq!(
@@ -676,12 +667,14 @@ fn test_withdraw_success() {
     });
 
     // Perform withdrawal
+    let start = std::time::Instant::now();
     token.withdraw(
         &user,
         &withdraw_amount,
         &withdraw_new_balance,
         &withdraw_proof,
     );
+    std::eprintln!("withdraw took: {:?}", start.elapsed());
 
     // Verify transparent balance increased
     assert_eq!(
@@ -980,6 +973,7 @@ fn test_confidential_transfer_success() {
     });
 
     // Perform confidential transfer
+    let start = std::time::Instant::now();
     token.confidential_transfer(
         &src,
         &des,
@@ -989,6 +983,7 @@ fn test_confidential_transfer_success() {
         &src_new_balance,
         &transfer_proof,
     );
+    std::eprintln!("transfer took: {:?}", start.elapsed());
 
     // Verify state changes
     let final_src_ext = e.as_contract(&token.address, || {
@@ -1819,11 +1814,14 @@ fn end_to_end_demo() {
         &balance_pre_normalization,
     );
 
+    let start = std::time::Instant::now();
     token.rollover_pending_balance(
         &alice,
         &alice_new_balance_bytes,
         &alice_rollover_proof,
     );
+    let duration = start.elapsed();
+    std::println!("rollover took: {:?}", duration);
 
     // ═══════════════════════════════════════════════════════════════════════════════
     // STATE AFTER ALICE'S ROLLOVER (Pending → Available)
@@ -1877,6 +1875,7 @@ fn end_to_end_demo() {
             &auditor_public_key,
         );
 
+    let start = std::time::Instant::now();
     // Execute the confidential transfer
     token.confidential_transfer(
         &alice,
@@ -1887,6 +1886,9 @@ fn end_to_end_demo() {
         &alice_balance_after_transfer,
         &transfer_proof,
     );
+    let duration = start.elapsed();
+    std::println!("transfer took: {:?}", duration);
+
 
     // ═══════════════════════════════════════════════════════════════════════════════
     // STATE AFTER CONFIDENTIAL TRANSFER (Alice → Bob: 200 tokens)
@@ -2039,7 +2041,8 @@ fn end_to_end_demo() {
     let token_supply_before_withdrawal = e.as_contract(&token.address, || {
         read_token_confidential_ext(&e).total_confidential_supply
     });
-    
+
+    let start = std::time::Instant::now();
     // Perform withdrawal
     token.withdraw(
         &bob,
@@ -2047,6 +2050,8 @@ fn end_to_end_demo() {
         &bob_new_balance_after_withdrawal,
         &withdrawal_proof,
     );
+    std::println!("withdraw took: {:?}", start.elapsed());
+
     
     // ═══════════════════════════════════════════════════════════════════════════════
     // STATE AFTER BOB'S WITHDRAWAL (Confidential → Transparent: 100 tokens)
@@ -2223,7 +2228,12 @@ fn test_confidential_transfer_wasm_contract() {
     let amt_auditor = confidential_token_contract::ConfidentialAmountBytes::from_xdr(&e, &auditor_amount.to_xdr(&e)).unwrap();
     let src_new_balance = confidential_token_contract::ConfidentialBalanceBytes::from_xdr(&e, &src_new_balance.to_xdr(&e)).unwrap();
     let proof = confidential_token_contract::TransferProofBytes::from_xdr(&e, &transfer_proof.to_xdr(&e)).unwrap();
+
+    let start = std::time::Instant::now();
     client.confidential_transfer(&src, &des, &amt_src, &amt_des, &amt_auditor, &src_new_balance, &proof);
+    let duration = start.elapsed();
+    std::println!("confidential_transfer took: {:?}", duration);
+    
     e.cost_estimate().budget().print();
     e.cost_estimate().budget().reset_unlimited();
 }

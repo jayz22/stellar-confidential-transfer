@@ -1,8 +1,10 @@
 #![cfg_attr(not(feature = "demo"), no_std)]
 
-mod contract;
+pub mod contract;
 mod test;
-mod utils;
+#[cfg(any(test, feature = "testutils"))]
+pub mod testutil;
+pub mod utils;
 
 #[cfg(feature = "demo")]
 pub mod demo;
