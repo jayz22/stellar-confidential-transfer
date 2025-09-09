@@ -677,13 +677,15 @@ impl TransferSigmaProofAlphas {
 ///
 /// If all conditions are satisfied, the proof validates the normalization; otherwise, the function causes an error.
 pub fn verify_normalization_proof(
+    env: &Env,
     ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
     new_balance: &ConfidentialBalanceBytes,
     proof: &NewBalanceProofBytes,
 ) -> Result<(), Error> {
-    verify_new_balance_sigma_proof(ek, None, current_balance, new_balance, &proof.sigma_proof)?;
+    verify_new_balance_sigma_proof(env, ek, None, current_balance, new_balance, &proof.sigma_proof)?;
     verify_new_balance_range_proof(
+        env,
         &ConfidentialBalance::from_env_bytes(new_balance),
         &proof.zkrp_new_balance,
     )?;
@@ -700,6 +702,7 @@ pub fn verify_normalization_proof(
 ///
 /// If all conditions are satisfied, the proof validates the withdrawal; otherwise, the function causes an error.
 pub fn verify_withdrawal_proof(
+    env: &Env,
     ek: &CompressedPubkeyBytes,
     amount: u64,
     current_balance: &ConfidentialBalanceBytes,
@@ -707,6 +710,7 @@ pub fn verify_withdrawal_proof(
     proof: &NewBalanceProofBytes,
 ) -> Result<(), Error> {
     verify_new_balance_sigma_proof(
+        env,
         ek,
         Some(amount),
         current_balance,
@@ -714,6 +718,7 @@ pub fn verify_withdrawal_proof(
         &proof.sigma_proof,
     )?;
     verify_new_balance_range_proof(
+        env,
         &ConfidentialBalance::from_env_bytes(new_balance),
         &proof.zkrp_new_balance,
     )?;
@@ -734,6 +739,7 @@ pub fn verify_withdrawal_proof(
 ///
 /// If all conditions are satisfied, the proof validates the transfer; otherwise, the function causes an error.
 pub fn verify_transfer_proof(
+    env: &Env,
     sender_ek: &CompressedPubkeyBytes,
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
@@ -745,6 +751,7 @@ pub fn verify_transfer_proof(
     proof: &TransferProofBytes,
 ) -> Result<(), Error> {
     verify_transfer_sigma_proof(
+        env,
         sender_ek,
         recipient_ek,
         current_balance,
@@ -756,10 +763,12 @@ pub fn verify_transfer_proof(
         &proof.sigma_proof,
     )?;
     verify_new_balance_range_proof(
+        env,
         &ConfidentialBalance::from_env_bytes(new_balance),
         &proof.zkrp_new_balance,
     )?;
     verify_transfer_amount_range_proof(
+        env,
         &ConfidentialAmount::from_env_bytes(recipient_amount),
         &proof.zkrp_transfer_amount,
     )?;
@@ -772,6 +781,7 @@ pub fn verify_transfer_proof(
 
 /// Verifies the validity of the `NewBalanceSigmaProof`.
 fn verify_new_balance_sigma_proof(
+    env: &Env,
     ek: &CompressedPubkeyBytes,
     amount: Option<u64>, // if amount is `None`, it is equivalent to a NormalizationProof, otherwise, it's a WithdrawProof
     current_balance: &ConfidentialBalanceBytes,
@@ -779,6 +789,7 @@ fn verify_new_balance_sigma_proof(
     proof: &NewBalanceSigmaProofBytes,
 ) -> Result<(), Error> {
     let rho = fiat_shamir_new_balance_sigma_proof_challenge(
+        env,
         ek,
         amount,
         current_balance,
@@ -859,6 +870,7 @@ fn verify_new_balance_sigma_proof(
 
 /// Verifies the validity of the `TransferSigmaProof`.
 fn verify_transfer_sigma_proof(
+    env: &Env,
     sender_ek: &CompressedPubkeyBytes,
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
@@ -870,6 +882,7 @@ fn verify_transfer_sigma_proof(
     proof: &TransferSigmaProofBytes,
 ) -> Result<(), Error> {
     let rho = fiat_shamir_transfer_sigma_proof_challenge(
+        env,
         sender_ek,
         recipient_ek,
         current_balance,
@@ -1001,8 +1014,9 @@ fn verify_transfer_sigma_proof(
     Ok(())
 }
 
-/// Derives the Fiat-Shamir challenge for the `NewBalanceSigmaProof`.
+/// Derives the Fiat-Shamir challenge for the `NewBalanceSigmaProof` using soroban_sdk.
 fn fiat_shamir_new_balance_sigma_proof_challenge(
+    env: &Env,
     ek: &CompressedPubkeyBytes,
     amount: Option<u64>,
     current_balance: &ConfidentialBalanceBytes,
@@ -1029,11 +1043,12 @@ fn fiat_shamir_new_balance_sigma_proof_challenge(
     for x in &proof_xs.x4s {
         bytes.extend(x.to_bytes());
     }
-    new_scalar_from_sha2_512(&bytes)
+    new_scalar_from_sha2_512(env, &bytes)
 }
 
-/// Derives the Fiat-Shamir challenge for the `TransferSigmaProof`.
+/// Derives the Fiat-Shamir challenge for the `TransferSigmaProof` using soroban_sdk.
 fn fiat_shamir_transfer_sigma_proof_challenge(
+    env: &Env,
     sender_ek: &CompressedPubkeyBytes,
     recipient_ek: &CompressedPubkeyBytes,
     current_balance: &ConfidentialBalanceBytes,
@@ -1082,7 +1097,7 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
         bytes.extend(x.to_bytes());
     }
 
-    new_scalar_from_sha2_512(&bytes)
+    new_scalar_from_sha2_512(env, &bytes)
 }
 
 #[cfg(any(test, feature = "testutils"))]
@@ -1235,6 +1250,7 @@ pub mod testutils {
         let proof_xs_bytes = proof_xs.to_bytes(&env);
 
         let rho = fiat_shamir_new_balance_sigma_proof_challenge(
+            &env,
             &CompressedPubkeyBytes::from_point(&env, ek),
             amount,
             &current_balance.to_env_bytes(&env),
@@ -1384,6 +1400,7 @@ pub mod testutils {
         let proof_xs_bytes = proof_xs.to_bytes(&env);
 
         let rho = fiat_shamir_transfer_sigma_proof_challenge(
+            &env,
             &CompressedPubkeyBytes::from_point(&env, sender_ek),
             &CompressedPubkeyBytes::from_point(&env, recipient_ek),
             &current_balance.to_env_bytes(&env),
@@ -1477,6 +1494,7 @@ mod tests {
                 prove_normalization(&env, &dk, &ek, balance, &current_balance);
 
             let res = verify_normalization_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &ek),
                 &current_balance.to_env_bytes(&env),
                 &new_balance,
@@ -1509,6 +1527,7 @@ mod tests {
                 prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
 
             let res = verify_withdrawal_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &ek),
                 amount,
                 &current_balance.to_env_bytes(&env),
@@ -1533,6 +1552,7 @@ mod tests {
                 prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
 
             let res = verify_withdrawal_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &wrong_ek),
                 amount,
                 &current_balance.to_env_bytes(&env),
@@ -1557,6 +1577,7 @@ mod tests {
                 prove_withdrawal(&env, &dk, &ek, amount, new_balance, &current_balance);
 
             let res = verify_withdrawal_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &wrong_ek),
                 amount,
                 &current_balance.to_env_bytes(&env),
@@ -1581,6 +1602,7 @@ mod tests {
 
             let wrong_balance = new_balance_with_mismatched_decryption_handle(&new_balance, &ek);
             let res = verify_withdrawal_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &ek),
                 amount,
                 &current_balance.to_env_bytes(&env),
@@ -1618,6 +1640,7 @@ mod tests {
         );
 
         let res = verify_transfer_proof(
+            &env,
             &CompressedPubkeyBytes::from_point(&env, &sender_ek),
             &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
             &current_balance.to_env_bytes(&env),
@@ -1658,6 +1681,7 @@ mod tests {
             );
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &current_balance.to_env_bytes(&env), // Using original current_balance
@@ -1678,6 +1702,7 @@ mod tests {
             let wrong_sender_ek = pubkey_from_secret_key(&wrong_sender_dk);
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &wrong_sender_ek), // Wrong sender key
                 &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &current_balance.to_env_bytes(&env),
@@ -1698,6 +1723,7 @@ mod tests {
             let wrong_recipient_ek = pubkey_from_secret_key(&wrong_recipient_dk);
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &wrong_recipient_ek), // Wrong recipient key
                 &current_balance.to_env_bytes(&env),
@@ -1718,6 +1744,7 @@ mod tests {
             let wrong_auditor_ek = pubkey_from_secret_key(&wrong_auditor_dk);
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &current_balance.to_env_bytes(&env),
@@ -1744,6 +1771,7 @@ mod tests {
             let wrong_recipient_amount_bytes = wrong_recipient_amount.to_env_bytes(&env);
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &current_balance.to_env_bytes(&env),
@@ -1767,6 +1795,7 @@ mod tests {
             );
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &wrong_current_balance_for_verification.to_env_bytes(&env), // Wrong current balance
@@ -1787,6 +1816,7 @@ mod tests {
                 new_balance_with_mismatched_decryption_handle(&new_balance, &sender_ek);
 
             let res = verify_transfer_proof(
+                &env,
                 &CompressedPubkeyBytes::from_point(&env, &sender_ek),
                 &CompressedPubkeyBytes::from_point(&env, &recipient_ek),
                 &current_balance.to_env_bytes(&env),

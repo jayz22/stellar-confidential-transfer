@@ -2,7 +2,6 @@ use curve25519_dalek::constants;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
-use sha2::Sha512;
 use core::{assert, assert_eq};
 use alloc::vec::Vec;
 
@@ -132,8 +131,14 @@ pub fn multi_scalar_mul(points: &[RistrettoPoint], scalars: &[Scalar]) -> Ristre
     RistrettoPoint::multiscalar_mul(scalars, points)
 }
 
-pub fn new_scalar_from_sha2_512(bytes: &Vec<u8>) -> Scalar {
-    Scalar::hash_from_bytes::<Sha512>(bytes)
+/// Create a scalar from SHA-512 hash of the provided bytes using soroban_sdk.
+/// This is the unified implementation that works in all contexts.
+pub fn new_scalar_from_sha2_512(env: &soroban_sdk::Env, bytes: &Vec<u8>) -> Scalar {
+    let soroban_bytes = soroban_sdk::Bytes::from_slice(env, bytes);
+    let hash = env.crypto().sha512(&soroban_bytes);
+    let hash_bytes = hash.to_array();
+    // Convert the 64-byte hash to a scalar by reducing modulo the group order
+    Scalar::from_bytes_mod_order_wide(&hash_bytes)
 }
 
 /// Raises 2 to the power of the provided exponent and returns the result as a scalar.

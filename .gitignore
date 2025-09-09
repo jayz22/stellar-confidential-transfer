@@ -7,6 +7,7 @@ target
 .keys
 .vscode
 .claude
+.tips
 bindings
 **test_snapshots**
 **.wasm

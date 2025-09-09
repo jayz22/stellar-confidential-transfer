@@ -1,10 +1,9 @@
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype,
+    contract, contracterror, contractevent, contractimpl, contracttype,
     token::{self, TokenInterface},
-    Address, Env, String, Symbol,
+    Address, Env, MuxedAddress, String,
 };
-use soroban_token_sdk::metadata::TokenMetadata;
-use soroban_token_sdk::TokenUtils;
+use soroban_token_sdk::{metadata::TokenMetadata, events};
 
 use crate::utils::*;
 use stellar_confidential_crypto::{
@@ -16,6 +15,39 @@ use stellar_confidential_crypto::{
 };
 
 pub const MAX_PENDING_BALANCE_COUNTER: u32 = 0x10000;
+
+// Contract events for confidential operations
+#[contractevent]
+pub struct ConfidentialDeposit {
+    #[topic]
+    pub account: Address,
+    pub amount: u64,
+}
+
+#[contractevent]
+pub struct ConfidentialWithdraw {
+    #[topic]
+    pub account: Address,
+    pub amount: u64,
+}
+
+#[contractevent]
+pub struct ConfidentialTransfer {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub to: Address,
+    pub sender_amount: ConfidentialAmountBytes,
+    pub recipient_amount: ConfidentialAmountBytes,
+    pub auditor_amount: ConfidentialAmountBytes,
+}
+
+#[contractevent]
+pub struct ConfidentialRollover {
+    #[topic]
+    pub account: Address,
+    pub new_balance: ConfidentialBalanceBytes,
+}
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -122,8 +154,10 @@ impl ConfidentialToken {
         write_token_confidential_ext(e, &token_ext);
 
         //  Emits an event
-        let topics = (Symbol::new(e, "ConfidentialToken_deposit"), acc);
-        e.events().publish(topics, amt);
+        ConfidentialDeposit {
+            account: acc,
+            amount: amt,
+        }.publish(&e);
 
         Ok(())
     }
@@ -152,6 +186,7 @@ impl ConfidentialToken {
 
         // Verifies the WithdrawalProof against current balance, new balance, and amount
         verify_withdrawal_proof(
+            &e,
             &acc_ext.encryption_key,
             amt,
             &acc_ext.available_balance,
@@ -175,8 +210,10 @@ impl ConfidentialToken {
         write_token_confidential_ext(e, &token_ext);
 
         // Emits an event
-        let topics = (Symbol::new(e, "ConfidentialToken_withdraw"), acc);
-        e.events().publish(topics, amt);
+        ConfidentialWithdraw {
+            account: acc,
+            amount: amt,
+        }.publish(&e);
 
         Ok(())
     }
@@ -219,6 +256,7 @@ impl ConfidentialToken {
 
         // Verifies the transfer proof.
         verify_transfer_proof(
+            &e,
             &src_ext.encryption_key,    // sender_ek
             &des_ext.encryption_key,    // recipient_ek
             &src_ext.available_balance, // current_balance
@@ -244,8 +282,13 @@ impl ConfidentialToken {
         write_account_confidential_ext(e, des.clone(), &des_ext);
 
         // Emits an event with all relevant input under topic "ConfidentialToken_confidential_transfer"
-        let topics = (Symbol::new(e, "ConfidentialToken_transfer"), src, des);
-        e.events().publish(topics, (amt_src, amt_des, amt_auditor));
+        ConfidentialTransfer {
+            from: src,
+            to: des,
+            sender_amount: amt_src,
+            recipient_amount: amt_des,
+            auditor_amount: amt_auditor,
+        }.publish(&e);
 
         Ok(())
     }
@@ -280,6 +323,7 @@ impl ConfidentialToken {
         // verifies the NewBalanceProofBytes using verify_normalization_proof
         // The proof should demonstrate that new_balance = current_available_balance + pending_balance
         verify_normalization_proof(
+            &e,
             &acc_ext.encryption_key,
             &balance_pre_normalization,
             &new_balance,
@@ -299,11 +343,20 @@ impl ConfidentialToken {
         write_account_confidential_ext(e, acc.clone(), &acc_ext);
 
         // Emits an event
-        let topics = (Symbol::new(e, "ConfidentialToken_rollover"), acc);
-        e.events().publish(topics, new_balance);
+        ConfidentialRollover {
+            account: acc,
+            new_balance,
+        }.publish(&e);
 
         Ok(())
     }
+}
+
+#[contractevent(data_format = "single-value")]
+pub struct SetAdmin {
+    #[topic]
+    admin: Address,
+    new_admin: Address,
 }
 
 #[contractimpl]
@@ -333,7 +386,11 @@ impl ConfidentialToken {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         receive_balance(&e, to.clone(), amount);
-        TokenUtils::new(&e).events().mint(admin, to, amount);
+        events::Mint {
+            to,
+            to_muxed_id: None,
+            amount,
+        }.publish(&e);
     }
 
     pub fn set_admin(e: Env, new_admin: Address) {
@@ -345,7 +402,7 @@ impl ConfidentialToken {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         write_administrator(&e, &new_admin);
-        TokenUtils::new(&e).events().set_admin(admin, new_admin);
+        SetAdmin { admin, new_admin }.publish(&e);        
     }
 
     pub fn get_allowance(e: Env, from: Address, spender: Address) -> Option<AllowanceValue> {
@@ -374,9 +431,12 @@ impl token::Interface for ConfidentialToken {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         write_allowance(&e, from.clone(), spender.clone(), amount, expiration_ledger);
-        TokenUtils::new(&e)
-            .events()
-            .approve(from, spender, amount, expiration_ledger);
+        events::Approve {
+            from,
+            spender,
+            amount,
+            expiration_ledger,
+        }.publish(&e);
     }
 
     fn balance(e: Env, id: Address) -> i128 {
@@ -386,7 +446,7 @@ impl token::Interface for ConfidentialToken {
         read_balance(&e, id)
     }
 
-    fn transfer(e: Env, from: Address, to: Address, amount: i128) {
+    fn transfer(e: Env, from: Address, to: MuxedAddress, amount: i128) {
         from.require_auth();
 
         check_nonnegative_amount(amount);
@@ -395,9 +455,16 @@ impl token::Interface for ConfidentialToken {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
+        let to_addr = to.address();
+        let to_muxed_id = to.id();
         spend_balance(&e, from.clone(), amount);
-        receive_balance(&e, to.clone(), amount);
-        TokenUtils::new(&e).events().transfer(from, to, amount);
+        receive_balance(&e, to_addr.clone(), amount);
+        events::Transfer {
+            from,
+            to: to_addr,
+            to_muxed_id,
+            amount,
+        }.publish(&e);
     }
 
     fn transfer_from(e: Env, spender: Address, from: Address, to: Address, amount: i128) {
@@ -412,7 +479,12 @@ impl token::Interface for ConfidentialToken {
         spend_allowance(&e, from.clone(), spender, amount);
         spend_balance(&e, from.clone(), amount);
         receive_balance(&e, to.clone(), amount);
-        TokenUtils::new(&e).events().transfer(from, to, amount)
+        events::Transfer {
+            from,
+            to,
+            to_muxed_id: None,
+            amount,
+        }.publish(&e)
     }
 
     fn burn(e: Env, from: Address, amount: i128) {
@@ -425,7 +497,7 @@ impl token::Interface for ConfidentialToken {
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
         spend_balance(&e, from.clone(), amount);
-        TokenUtils::new(&e).events().burn(from, amount);
+        events::Burn { from, amount }.publish(&e);
     }
 
     fn burn_from(e: Env, spender: Address, from: Address, amount: i128) {
@@ -439,7 +511,7 @@ impl token::Interface for ConfidentialToken {
 
         spend_allowance(&e, from.clone(), spender, amount);
         spend_balance(&e, from.clone(), amount);
-        TokenUtils::new(&e).events().burn(from, amount)
+        events::Burn { from, amount }.publish(&e)
     }
 
     fn decimals(e: Env) -> u32 {

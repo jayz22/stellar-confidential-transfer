@@ -8,12 +8,15 @@ members = [
 
 [workspace.dependencies]
 curve25519-dalek = "4.1.3"
-soroban-sdk = "22.0.7"
-soroban-token-sdk = "22.0.1"
+soroban-sdk = { version = "23.0.2", git = "https://github.com/jayz22/rs-soroban-sdk.git",branch = "conf-token"}
+soroban-token-sdk = { version = "23.0.2", git = "https://github.com/jayz22/rs-soroban-sdk.git",branch = "conf-token"}
 sha2 = { version = "0.10.9", default-features = false }
-bulletproofs = { version = "5.0.0", git = "https://github.com/jayz22/bulletproofs.git", branch = "main", default-features = false }
+bulletproofs = { version = "5.0.0", default-features = false }
 merlin = { version = "3.0.0", default-features = false }
 rand = "0.8.5"
+
+[patch.crates-io]
+merlin = { version = "3.0.0", git = "https://github.com/aptos-labs/merlin.git"}
 
 [profile.release]
 opt-level = "z"
