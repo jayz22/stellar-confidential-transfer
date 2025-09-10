@@ -50,7 +50,6 @@ fn bench_confidential_operations(c: &mut Criterion) {
                 (token, user, withdraw_amount, withdraw_new_balance, withdraw_proof)   
             },
             |(token, user, withdraw_amount, withdraw_new_balance, withdraw_proof)| {
-                // ONLY this proof generation is measured
                 black_box(token.withdraw(
                     &user,
                     &withdraw_amount,
@@ -90,7 +89,6 @@ fn bench_confidential_operations(c: &mut Criterion) {
                 user,
                 new_balance_bytes,
                 proof)| {
-                // ONLY this proof generation is measured
                 black_box(token.rollover_pending_balance(&user, &new_balance_bytes, &proof));
             },
             BatchSize::SmallInput,
@@ -159,7 +157,6 @@ fn bench_confidential_operations(c: &mut Criterion) {
                 auditor_amount,
                 src_new_balance,
                 transfer_proof,)| {
-                // ONLY this proof generation is measured
                 black_box(token.confidential_transfer(
                     &src,
                     &des,
