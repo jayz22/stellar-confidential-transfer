@@ -5,7 +5,7 @@ use crate::{
     contract::{ConfidentialToken, MAX_PENDING_BALANCE_COUNTER},
     testutil::*,
     utils::{
-        read_account_confidential_ext, read_balance, read_token_confidential_ext, write_account_confidential_ext, write_token_confidential_ext
+        read_account_confidential_ext, read_balance, read_token_confidential_ext
     },
     ConfidentialTokenClient,
 };
@@ -13,7 +13,7 @@ use soroban_sdk::{
     symbol_short, testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation}, xdr::{FromXdr, ToXdr}, Address, Env, FromVal, IntoVal, String, Symbol
 };
 use stellar_confidential_crypto::{
-    arith::{new_scalar_from_u64, pubkey_from_secret_key}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}, proof::{self, CompressedPubkeyBytes}, ConfidentialAmount, ConfidentialBalanceBytes, RistrettoPoint, Scalar
+    arith::{new_scalar_from_u64, pubkey_from_secret_key}, confidential_balance::testutils::{generate_amount_randomness, generate_balance_randomness}, proof::{self, CompressedPubkeyBytes}, ConfidentialAmount, ConfidentialBalanceBytes
 };
 use stellar_confidential_crypto::{
     confidential_balance::ConfidentialBalance, ConfidentialAmountBytes,
@@ -271,13 +271,6 @@ fn test_zero_allowance() {
     assert!(token.get_allowance(&from, &spender).is_none());
 }
 
-// Helper function to create a CompressedPubkeyBytes for account encryption key
-fn create_test_account_key(e: &Env, seed: u64) -> CompressedPubkeyBytes {
-    let secret_key = new_scalar_from_u64(seed);
-    let public_key = pubkey_from_secret_key(&secret_key);
-    CompressedPubkeyBytes::from_point(e, &public_key)
-}
-
 #[test]
 fn test_token_confidential_extension() {
     let e = Env::default();
@@ -382,25 +375,6 @@ fn test_deposit_with_disabled_account() {
     token.deposit(&user, &100);
 }
 
-// Helper function to setup confidential token for testing
-fn setup_confidential_token_with_account(e: &Env) -> (ConfidentialTokenClient, Address, Address) {
-    let admin = Address::generate(e);
-    let user = Address::generate(e);
-    let token = create_token(e, &admin);
-
-    // Create test keys
-    let auditor_key = create_test_account_key(e, 12345);
-    let user_encryption_key = create_test_account_key(e, 54321);
-
-    // Register token for confidential extension
-    token.register_confidential_token(&auditor_key);
-
-    // Register user account
-    token.register_account(&user, &user_encryption_key);
-
-    (token, admin, user)
-}
-
 #[test]
 fn test_deposit_success() {
     use stellar_confidential_crypto::ConfidentialAmountBytes;
@@ -485,41 +459,6 @@ fn test_deposit_disabled_token() {
     token.deposit(&user, &deposit_amount);
 }
 
-// Helper function to setup confidential token with deposit and return user keys for proof generation
-fn setup_confidential_token_with_deposit(
-    e: &Env,
-    initial_total_supply: i128,
-    initial_pending_balance: u64,
-) -> (
-    ConfidentialTokenClient,
-    Address,
-    Address,
-    Scalar,
-    RistrettoPoint,
-) {
-    let admin = Address::generate(e);
-    let user = Address::generate(e);
-    let token = create_token(e, &admin);
-
-    // Create test keys
-    let auditor_key = create_test_account_key(e, 12345);
-    let user_secret_key = new_scalar_from_u64(54321);
-    let user_public_key = pubkey_from_secret_key(&user_secret_key);
-    let user_encryption_key = CompressedPubkeyBytes::from_point(e, &user_public_key);
-
-    // Register token for confidential extension
-    token.register_confidential_token(&auditor_key);
-
-    // Register user account
-    token.register_account(&user, &user_encryption_key);
-
-    // Mint and deposit some tokens
-    token.mint(&user, &initial_total_supply);
-    token.deposit(&user, &initial_pending_balance);
-
-    (token, admin, user, user_secret_key, user_public_key)
-}
-
 #[test]
 fn test_rollover_pending_balance() {
     let e = Env::default();
@@ -563,73 +502,6 @@ fn test_rollover_pending_balance() {
     );
     // Actual balance has been set to the new_balance
     assert_eq!(account_ext_after.available_balance, new_balance_bytes);
-}
-
-// Helper function to setup confidential token with deposit and return user keys for proof generation
-fn setup_confidential_token_account_with_balances(
-    e: &Env,
-    initial_available_balance: u64,
-    initial_pending_balance: u64,
-) -> (
-    ConfidentialTokenClient,
-    Address,
-    Address,
-    Scalar,
-    RistrettoPoint,
-    ConfidentialBalance,
-    ConfidentialAmount,
-) {
-    let admin = Address::generate(e);
-    let user = Address::generate(e);
-    let token = create_token(e, &admin);
-
-    // Create test keys
-    let auditor_key = create_test_account_key(e, 12345);
-    let user_secret_key = new_scalar_from_u64(54321);
-    let user_public_key = pubkey_from_secret_key(&user_secret_key);
-    let user_encryption_key = CompressedPubkeyBytes::from_point(e, &user_public_key);
-
-    // Register token for confidential extension
-    token.register_confidential_token(&auditor_key);
-
-    // Register user account
-    token.register_account(&user, &user_encryption_key);
-
-    let available_balance = ConfidentialBalance::new_balance_from_u128(
-        initial_available_balance as u128,
-        &generate_balance_randomness(),
-        &user_public_key,
-    );
-    let pending_balance = ConfidentialAmount::new_amount_from_u64(
-        initial_pending_balance,
-        &generate_amount_randomness(),
-        &user_public_key,
-    );
-    // let available_balance = ConfidentialBalance::new_balance_with_no_randomness(initial_available_balance as u128);
-    // let pending_balance = ConfidentialAmount::new_amount_with_no_randomness(initial_available_balance);
-
-    // we cheat a bit here by directly setting the values of balances, in reality there should be a deposit followed by rollover (with proof)
-    e.as_contract(&token.address, || {
-        let mut ext = read_account_confidential_ext(&e, user.clone());
-        ext.available_balance = available_balance.to_env_bytes(&e);
-        ext.pending_balance = pending_balance.to_env_bytes(&e);
-        write_account_confidential_ext(&e, user.clone(), &ext);
-
-        let mut token_ext = read_token_confidential_ext(&e);
-        token_ext.total_confidential_supply =
-            (initial_available_balance + initial_pending_balance) as u128;
-        write_token_confidential_ext(&e, &token_ext);
-    });
-
-    (
-        token,
-        admin,
-        user,
-        user_secret_key,
-        user_public_key,
-        available_balance,
-        pending_balance,
-    )
 }
 
 #[test]
@@ -776,125 +648,6 @@ fn test_withdraw_wrong_new_balance() {
     token.withdraw(&user, &withdraw_amount, &wrong_new_balance, &withdraw_proof);
 }
 
-// Now help me implement tests for confidential_transfer. Setup: confidential token. two accounts: src, des. Both with
-// the some initial available and pending balances, you can set it up in the simliar way as before, i.e. directly setting
-// the data entry instead of calling deposit, rollover etc.
-//
-// Here are the test scenrios:
-// 1. successful transfer
-// 2. destination account is disabled, fail
-// 3. src account has insufficient balance
-// 4. des account's pending counter already at maximum (for this you need to sweak the initial setup to allow overriding the pending counter)
-
-// Helper function to setup confidential token with two accounts for transfer testing
-fn setup_confidential_token_two_accounts(
-    e: &Env,
-    src_available_balance: u64,
-    src_pending_balance: u64,
-    des_available_balance: u64,
-    des_pending_balance: u64,
-    des_pending_counter: Option<u32>, // Allow overriding destination pending counter
-) -> (
-    ConfidentialTokenClient,
-    Address,
-    Address,
-    Address,
-    Scalar,
-    RistrettoPoint,
-    Scalar,
-    RistrettoPoint,
-    ConfidentialBalance,
-    ConfidentialBalance,
-    CompressedPubkeyBytes, // auditor key
-) {
-    let admin = Address::generate(e);
-    let src = Address::generate(e);
-    let des = Address::generate(e);
-    let token = create_token(e, &admin);
-
-    // Create test keys
-    let auditor_secret_key = new_scalar_from_u64(12345);
-    let auditor_public_key = pubkey_from_secret_key(&auditor_secret_key);
-    let auditor_key = CompressedPubkeyBytes::from_point(e, &auditor_public_key);
-
-    let src_secret_key = new_scalar_from_u64(54321);
-    let src_public_key = pubkey_from_secret_key(&src_secret_key);
-    let src_encryption_key = CompressedPubkeyBytes::from_point(e, &src_public_key);
-
-    let des_secret_key = new_scalar_from_u64(98765);
-    let des_public_key = pubkey_from_secret_key(&des_secret_key);
-    let des_encryption_key = CompressedPubkeyBytes::from_point(e, &des_public_key);
-
-    // Register token for confidential extension
-    token.register_confidential_token(&auditor_key);
-
-    // Register both accounts
-    token.register_account(&src, &src_encryption_key);
-    token.register_account(&des, &des_encryption_key);
-
-    // Create confidential balances
-    let src_available_balance_conf = ConfidentialBalance::new_balance_from_u128(
-        src_available_balance as u128,
-        &generate_balance_randomness(),
-        &src_public_key,
-    );
-    let src_pending_balance_conf = ConfidentialAmount::new_amount_from_u64(
-        src_pending_balance,
-        &generate_amount_randomness(),
-        &src_public_key,
-    );
-
-    let des_available_balance_conf = ConfidentialBalance::new_balance_from_u128(
-        des_available_balance as u128,
-        &generate_balance_randomness(),
-        &des_public_key,
-    );
-    let des_pending_balance_conf = ConfidentialAmount::new_amount_from_u64(
-        des_pending_balance,
-        &generate_amount_randomness(),
-        &des_public_key,
-    );
-
-    // Set up account states directly
-    e.as_contract(&token.address, || {
-        // Set source account
-        let mut src_ext = read_account_confidential_ext(&e, src.clone());
-        src_ext.available_balance = src_available_balance_conf.to_env_bytes(&e);
-        src_ext.pending_balance = src_pending_balance_conf.to_env_bytes(&e);
-        write_account_confidential_ext(&e, src.clone(), &src_ext);
-
-        // Set destination account
-        let mut des_ext = read_account_confidential_ext(&e, des.clone());
-        des_ext.available_balance = des_available_balance_conf.to_env_bytes(&e);
-        des_ext.pending_balance = des_pending_balance_conf.to_env_bytes(&e);
-        if let Some(counter) = des_pending_counter {
-            des_ext.pending_counter = counter;
-        }
-        write_account_confidential_ext(&e, des.clone(), &des_ext);
-
-        // Update total confidential supply
-        let mut token_ext = read_token_confidential_ext(&e);
-        token_ext.total_confidential_supply = (src_available_balance
-            + des_available_balance
-            + src_pending_balance
-            + des_pending_balance) as u128;
-        write_token_confidential_ext(&e, &token_ext);
-    });
-
-    (
-        token,
-        admin,
-        src,
-        des,
-        src_secret_key,
-        src_public_key,
-        des_secret_key,
-        des_public_key,
-        src_available_balance_conf,
-        des_available_balance_conf,
-        auditor_key,
-    )
-}
 
 #[test]
 fn test_confidential_transfer_success() {
@@ -944,25 +697,6 @@ fn test_confidential_transfer_success() {
             &src_current_balance,
             &auditor_public_key,
         );
-
-    // Print bytes size of each component in the transfer_proof
-    std::eprintln!("=== TRANSFER PROOF COMPONENT SIZES ===");
-    
-    // Convert to XDR to get actual bytes sizes
-    let transfer_proof_xdr = transfer_proof.clone().to_xdr(&e);
-    std::eprintln!("Total transfer_proof size: {} bytes", transfer_proof_xdr.len());
-    
-    // First-level components
-    let sigma_proof_xdr = transfer_proof.sigma_proof.clone().to_xdr(&e);
-    std::eprintln!("sigma_proof size: {} bytes", sigma_proof_xdr.len());
-    
-    let zkrp_new_balance_xdr = transfer_proof.zkrp_new_balance.clone().to_xdr(&e);
-    std::eprintln!("zkrp_new_balance size: {} bytes", zkrp_new_balance_xdr.len());
-    
-    let zkrp_transfer_amount_xdr = transfer_proof.zkrp_transfer_amount.clone().to_xdr(&e);
-    std::eprintln!("zkrp_transfer_amount size: {} bytes", zkrp_transfer_amount_xdr.len());
-    
-    std::eprintln!("=======================================");
 
     // Get initial states for verification
     let initial_src_ext = e.as_contract(&token.address, || {
