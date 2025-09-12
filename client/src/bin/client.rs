@@ -98,7 +98,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let key_pair = key_manager.generate_key_pair(seed);
             
             file_manager.save_key_pair(&name, &key_pair)?;
-            file_manager.save_pubkey_cli(&name, &key_pair.public_key_hex)?;
             
             println!("\n✅ Key pair generated successfully!");
             println!("   Name: {}", name);
@@ -148,7 +147,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             
             file_manager.save_rollover_data(&key_name, &rollover_data)?;
-            file_manager.save_rollover_cli_data(&key_name, &rollover_data)?;
             
             println!("\n✅ Rollover proof generated for '{}'!", key_name);
             println!("   Total balance amount: {}", total_balance_amount);
@@ -201,7 +199,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             
             file_manager.save_transaction_data(&transfer_data)?;
-            file_manager.save_transaction_cli_data(&transfer_data)?;
             
             println!("\n✅ Transfer proof generated!");
             println!("   From: {}", from_key);
@@ -250,7 +247,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             
             file_manager.save_withdrawal_data(&key_name, &withdrawal_data)?;
-            file_manager.save_withdrawal_cli_data(&key_name, &withdrawal_data)?;
             
             println!("\n✅ Withdrawal proof generated for '{}'!", key_name);
             println!("   Withdrawal amount: {}", amount);

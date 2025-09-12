@@ -1,8 +1,6 @@
 use crate::types::*;
-use crate::json_converter::*;
 use std::fs;
 use std::path::Path;
-use serde_json;
 
 pub struct FileManager {
     base_path: String,
@@ -149,86 +147,5 @@ impl FileManager {
         
         files.sort();
         Ok(files)
-    }
-    
-    /// Save CLI-compatible rollover data using existing ProofData
-    pub fn save_rollover_cli_data(&self, user: &str, data: &RolloverData) -> Result<(), String> {
-        self.ensure_directory()?;
-        
-        // Convert existing XDR hex to CLI JSON format
-        let cli_data = serde_json::json!({
-            "balance_amount": data.balance_amount,
-            "proof": proof_xdr_to_cli_json(&data.proof.proof_hex, "NewBalanceProof")?,
-            "new_balance": balance_xdr_to_cli_json(&data.proof.new_balance_hex)?
-        });
-        
-        let json = serde_json::to_string_pretty(&cli_data)
-            .map_err(|e| format!("Failed to serialize CLI rollover data: {}", e))?;
-        let path = format!("{}/{}_rollover_cli.json", self.base_path, user);
-        fs::write(&path, json).map_err(|e| format!("Failed to write CLI rollover file: {}", e))?;
-        println!("CLI-compatible rollover data saved to {}", path);
-        Ok(())
-    }
-    
-    /// Save CLI-compatible transaction data using existing ProofData
-    pub fn save_transaction_cli_data(&self, data: &TransactionData) -> Result<(), String> {
-        self.ensure_directory()?;
-        
-        // Convert existing XDR hex to CLI JSON format
-        let cli_data = serde_json::json!({
-            "transfer_amount": data.transfer_amount,
-            "alice_new_balance": data.alice_new_balance,
-            "proof": proof_xdr_to_cli_json(&data.proof.proof_hex, "TransferProof")?,
-            "new_balance": balance_xdr_to_cli_json(&data.proof.new_balance_hex)?,
-            "amount_alice": data.proof.amount_alice_hex.as_ref()
-                .map(|h| amount_xdr_to_cli_json(h))
-                .transpose()?,
-            "amount_bob": data.proof.amount_bob_hex.as_ref()
-                .map(|h| amount_xdr_to_cli_json(h))
-                .transpose()?,
-            "amount_auditor": data.proof.amount_auditor_hex.as_ref()
-                .map(|h| amount_xdr_to_cli_json(h))
-                .transpose()?
-        });
-        
-        let json = serde_json::to_string_pretty(&cli_data)
-            .map_err(|e| format!("Failed to serialize CLI transaction data: {}", e))?;
-        let path = format!("{}/transfer_cli.json", self.base_path);
-        fs::write(&path, json).map_err(|e| format!("Failed to write CLI transfer file: {}", e))?;
-        println!("CLI-compatible transfer data saved to {}", path);
-        Ok(())
-    }
-    
-    /// Save CLI-compatible withdrawal data using existing ProofData
-    pub fn save_withdrawal_cli_data(&self, user: &str, data: &WithdrawalData) -> Result<(), String> {
-        self.ensure_directory()?;
-        
-        // Convert existing XDR hex to CLI JSON format
-        let cli_data = serde_json::json!({
-            "withdrawal_amount": data.withdrawal_amount,
-            "new_balance": data.new_balance,
-            "proof": proof_xdr_to_cli_json(&data.proof.proof_hex, "NewBalanceProof")?,
-            "new_balance_bytes": balance_xdr_to_cli_json(&data.proof.new_balance_hex)?
-        });
-        
-        let json = serde_json::to_string_pretty(&cli_data)
-            .map_err(|e| format!("Failed to serialize CLI withdrawal data: {}", e))?;
-        let path = format!("{}/{}_withdrawal_cli.json", self.base_path, user);
-        fs::write(&path, json).map_err(|e| format!("Failed to write CLI withdrawal file: {}", e))?;
-        println!("CLI-compatible withdrawal data saved to {}", path);
-        Ok(())
-    }
-    
-    /// Save public key in CLI-compatible format
-    pub fn save_pubkey_cli(&self, name: &str, pubkey_hex: &str) -> Result<(), String> {
-        self.ensure_directory()?;
-        
-        let cli_pubkey = pubkey_to_cli_json(pubkey_hex)?;
-        let json = serde_json::to_string_pretty(&cli_pubkey)
-            .map_err(|e| format!("Failed to serialize CLI pubkey: {}", e))?;
-        let path = format!("{}/{}_pubkey_cli.json", self.base_path, name);
-        fs::write(&path, json).map_err(|e| format!("Failed to write CLI pubkey file: {}", e))?;
-        println!("CLI-compatible public key saved to {}", path);
-        Ok(())
     }
 }

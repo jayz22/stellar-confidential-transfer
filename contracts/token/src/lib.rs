@@ -8,7 +8,5 @@ pub mod utils;
 
 #[cfg(feature = "demo")]
 pub mod demo;
-#[cfg(feature = "demo")]
-pub mod demo_simple;
 
 pub use crate::contract::ConfidentialTokenClient;
