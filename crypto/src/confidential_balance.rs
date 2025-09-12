@@ -3,47 +3,26 @@ use crate::arith::new_scalar_from_u64;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
-use soroban_sdk::{contracttype, BytesN, Env, Vec};
-use core::{assert_eq, debug_assert};
+use soroban_sdk::{contracttype, BytesN, Env};
+use core::assert_eq;
 
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
 pub const CHUNK_SIZE_BITS: u64 = 16;
-pub const RISTRETTO_FIELD_SIZE_BITS: usize = 32;
+pub const RISTRETTO_FIELD_SIZE_BYTES: usize = 32;
 
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct CompressedRistrettoBytes(pub BytesN<32>);
-
-impl CompressedRistrettoBytes {
-    pub fn to_bytes(&self) -> [u8; 32] {
-        self.0.to_array()
-    }
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct EncryptedChunkBytes {
-    pub amount: CompressedRistrettoBytes, // C
-    pub handle: CompressedRistrettoBytes, // D
-}
+pub const CONFIDENTIAL_AMOUNT_BYTES: usize = 2 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES;
+pub const CONFIDENTIAL_BALANCE_BYTES: usize = 2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES;
 
 #[contracttype]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConfidentialBalanceBytes(pub Vec<EncryptedChunkBytes>); // 8 chunks
+pub struct ConfidentialBalanceBytes(pub BytesN<512>); // 8 chunks
 
 impl ConfidentialBalanceBytes {
-    pub fn to_bytes(&self) -> [u8; 2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BITS] {
-        assert_eq!(self.0.len() as usize, BALANCE_CHUNKS);
-        let mut bytes = [0u8; 512];
-        let mut i = 0;
-        for chunk in self.0.iter() {
-            bytes[i..i + 32].copy_from_slice(&chunk.amount.0.to_array());
-            bytes[i + 32..i + 64].copy_from_slice(&chunk.handle.0.to_array());
-            i += 64;
-        }
-        debug_assert!(i == 512);
-        bytes
+    pub fn to_bytes(&self) -> [u8; CONFIDENTIAL_BALANCE_BYTES] {
+        let mut slice = [0u8; CONFIDENTIAL_BALANCE_BYTES];
+        self.0.copy_into_slice(&mut slice);
+        slice
     }
 
     pub fn zero(e: &Env) -> Self {
@@ -59,20 +38,13 @@ impl ConfidentialBalanceBytes {
 
 #[contracttype]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConfidentialAmountBytes(pub Vec<EncryptedChunkBytes>); // 4 chunks
+pub struct ConfidentialAmountBytes(pub BytesN<256>); // 4 chunks
 
 impl ConfidentialAmountBytes {
-    pub fn to_bytes(&self) -> [u8; 2 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BITS] {
-        assert_eq!(self.0.len() as usize, AMOUNT_CHUNKS);
-        let mut bytes = [0u8; 256];
-        let mut i = 0;
-        for chunk in self.0.iter() {
-            bytes[i..i + 32].copy_from_slice(&chunk.amount.0.to_array());
-            bytes[i + 32..i + 64].copy_from_slice(&chunk.handle.0.to_array());
-            i += 64;
-        }
-        debug_assert!(i == 256);
-        bytes
+    pub fn to_bytes(&self) -> [u8; CONFIDENTIAL_AMOUNT_BYTES] {
+        let mut slice = [0u8; CONFIDENTIAL_AMOUNT_BYTES];
+        self.0.copy_into_slice(&mut slice);
+        slice
     }
 
     pub fn add(e: &Env, lhs: &Self, rhs: &Self) -> Self {
@@ -120,23 +92,18 @@ impl EncryptedChunk {
         }
     }
 
-    pub fn to_env_bytes(&self, e: &Env) -> EncryptedChunkBytes {
-        EncryptedChunkBytes {
-            amount: CompressedRistrettoBytes(BytesN::<32>::from_array(
-                e,
-                &arith::point_to_bytes(&self.amount),
-            )),
-            handle: CompressedRistrettoBytes(BytesN::<32>::from_array(
-                e,
-                &arith::point_to_bytes(&self.handle),
-            )),
-        }
+    pub fn to_bytes(&self) -> [u8; RISTRETTO_FIELD_SIZE_BYTES * 2] {
+        let mut bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES * 2];
+        bytes[0..RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&arith::point_to_bytes(&self.amount));
+        bytes[RISTRETTO_FIELD_SIZE_BYTES..RISTRETTO_FIELD_SIZE_BYTES * 2].copy_from_slice(&arith::point_to_bytes(&self.handle));
+        bytes
     }
 
-    pub fn from_env_bytes(bytes: &EncryptedChunkBytes) -> Self {
-        let amount = arith::bytes_to_point(&bytes.amount.0.to_array());
-        let handle = arith::bytes_to_point(&bytes.handle.0.to_array());
-        EncryptedChunk { amount, handle }
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        assert_eq!(bytes.len(), RISTRETTO_FIELD_SIZE_BYTES * 2);
+        let amount = arith::bytes_to_point(&bytes[0..RISTRETTO_FIELD_SIZE_BYTES]);
+        let handle = arith::bytes_to_point(&bytes[RISTRETTO_FIELD_SIZE_BYTES..RISTRETTO_FIELD_SIZE_BYTES*2]);
+        EncryptedChunk { amount, handle }        
     }
 
     pub fn add(&self, other: &Self) -> Self {
@@ -177,20 +144,26 @@ impl ConfidentialAmount {
     }
 
     pub fn from_env_bytes(bytes: &ConfidentialAmountBytes) -> Self {
-        assert_eq!(bytes.0.len() as usize, AMOUNT_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); AMOUNT_CHUNKS];
+        let mut slice = [0; CONFIDENTIAL_AMOUNT_BYTES];
+        bytes.0.copy_into_slice(&mut slice);
         for i in 0..AMOUNT_CHUNKS {
-            encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
+            let start = i * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            let end = (i+1) * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            encrypted_chunks[i] = EncryptedChunk::from_bytes(&slice[start..end]);
         }
         ConfidentialAmount(encrypted_chunks)
     }
 
     pub fn to_env_bytes(&self, e: &Env) -> ConfidentialAmountBytes {
-        let mut chunks = Vec::new(e);
+        let mut bytes = [0u8; CONFIDENTIAL_AMOUNT_BYTES];
         for i in 0..AMOUNT_CHUNKS {
-            chunks.push_back(self.0[i].to_env_bytes(e));
+            let chunk_bytes = self.0[i].to_bytes();
+            let start = i * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            let end = (i+1) * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            bytes[start..end].copy_from_slice(&chunk_bytes);
         }
-        ConfidentialAmountBytes(chunks)
+        ConfidentialAmountBytes(BytesN::<256>::from_array(e, &bytes))
     }
 
     pub fn get_encrypted_amounts(&self) -> [RistrettoPoint; AMOUNT_CHUNKS] {
@@ -285,20 +258,26 @@ impl ConfidentialBalance {
     }
 
     pub fn from_env_bytes(bytes: &ConfidentialBalanceBytes) -> Self {
-        assert_eq!(bytes.0.len() as usize, BALANCE_CHUNKS);
         let mut encrypted_chunks = [EncryptedChunk::zero_amount_and_randomness(); BALANCE_CHUNKS];
+        let mut slice = [0; CONFIDENTIAL_BALANCE_BYTES];
+        bytes.0.copy_into_slice(&mut slice);
         for i in 0..BALANCE_CHUNKS {
-            encrypted_chunks[i] = EncryptedChunk::from_env_bytes(&bytes.0.get(i as u32).unwrap());
+            let start = i * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            let end = (i+1) * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            encrypted_chunks[i] = EncryptedChunk::from_bytes(&slice[start..end]);
         }
         ConfidentialBalance(encrypted_chunks)
     }
 
     pub fn to_env_bytes(&self, e: &Env) -> ConfidentialBalanceBytes {
-        let mut chunks = Vec::new(e);
+        let mut bytes = [0u8; CONFIDENTIAL_BALANCE_BYTES];
         for i in 0..BALANCE_CHUNKS {
-            chunks.push_back(self.0[i].to_env_bytes(e));
+            let chunk_bytes = self.0[i].to_bytes();
+            let start = i * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            let end = (i+1) * 2 * RISTRETTO_FIELD_SIZE_BYTES;
+            bytes[start..end].copy_from_slice(&chunk_bytes);            
         }
-        ConfidentialBalanceBytes(chunks)
+        ConfidentialBalanceBytes(BytesN::<512>::from_array(e, &bytes))
     }
 
     pub fn get_encrypted_balances(&self) -> [RistrettoPoint; BALANCE_CHUNKS] {

@@ -1966,7 +1966,7 @@ fn test_confidential_transfer_wasm_contract() {
     let start = std::time::Instant::now();
     client.confidential_transfer(&src, &des, &amt_src, &amt_des, &amt_auditor, &src_new_balance, &proof);
     let duration = start.elapsed();
-    std::println!("confidential_transfer took: {:?}", duration);
+    std::eprintln!("confidential_transfer took: {:?}", duration);
     
     e.cost_estimate().budget().print();
     e.cost_estimate().budget().reset_unlimited();

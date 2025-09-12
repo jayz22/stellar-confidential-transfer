@@ -10,12 +10,41 @@ use crate::{
     confidential_balance::*,
 };
 use curve25519_dalek::{traits::Identity, RistrettoPoint, Scalar};
-use soroban_sdk::{contracttype, BytesN, Env, Vec};
+use soroban_sdk::{contracttype, BytesN, Env};
 use core::iter::Extend;
 
 const FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST: &[u8] =
     b"StellarConfidentialToken/NewBalanceProofFiatShamir";
 const FIAT_SHAMIR_TRANSFER_SIGMA_DST: &[u8] = b"StellarConfidentialToken/TransferProofFiatShamir";
+
+// Size calculation constants for normalization proof types
+const NORMALIZATION_SIGMA_PROOF_XS_BYTES: usize = 
+    2 * RISTRETTO_FIELD_SIZE_BYTES + // x1 + x2
+    2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES; // x3s + x4s
+
+const NORMALIZATION_SIGMA_PROOF_ALPHAS_BYTES: usize = 
+    2 * RISTRETTO_FIELD_SIZE_BYTES + // a2 + a3
+    2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES; // a1s + a4s
+
+// Size calculation constants for new balance proof types
+const NEW_BALANCE_SIGMA_PROOF_XS_BYTES: usize = 
+    2 * RISTRETTO_FIELD_SIZE_BYTES + // x1 + x2
+    2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES; // x3s + x4s
+
+const NEW_BALANCE_SIGMA_PROOF_ALPHAS_BYTES: usize = 
+    2 * RISTRETTO_FIELD_SIZE_BYTES + // a2 + a3
+    2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES; // a1s + a4s
+
+// Size calculation constants for transfer proof types
+const TRANSFER_SIGMA_PROOF_XS_BYTES: usize = 
+    2 * RISTRETTO_FIELD_SIZE_BYTES + // x1 + x5
+    2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES + // x2s + x6s  
+    4 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES; // x3s + x4s + x7s + x8s
+
+const TRANSFER_SIGMA_PROOF_ALPHAS_BYTES: usize = 
+    2 * RISTRETTO_FIELD_SIZE_BYTES + // a2 + a5
+    2 * BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES + // a1s + a6s
+    2 * AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES; // a3s + a4s
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -71,118 +100,25 @@ pub struct TransferProofBytes {
     pub zkrp_transfer_amount: RangeProofBytes,
 }
 
-//
-// Helper structs
-//
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct NormalizationSigmaProofXsBytes {
-    // proves the relation: Σ C_i * 2^{16i} = Σ b_i 2^{16i}G + Σ sk 2^{16i} D_i
-    pub x1: CompressedRistrettoBytes,
-    // proves the key-pair relation: P = sk^-1 * H
-    pub x2: CompressedRistrettoBytes,
-    // proves the relation that the encrypted C value for every chunk is correct, C_i = m_i*G + r_i*H
-    pub x3s: Vec<CompressedRistrettoBytes>,
-    // proves the decrption handle for each chunk is correct, D_i = r_i*P
-    pub x4s: Vec<CompressedRistrettoBytes>,
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct NormalizationSigmaProofAlphasBytes {
-    pub a1s: Vec<ScalarBytes>, // hides the unencrypted amount chunks
-    pub a2: ScalarBytes,       // hides dk
-    pub a3: ScalarBytes,       // hides dk^-1
-    pub a4s: Vec<ScalarBytes>, // hides new balance's encryption randomness (each chunk is encrypted with a different randomness parameter)
-}
-
 #[contracttype]
 #[derive(Debug, Clone)]
 pub struct NormalizationSigmaProofBytes {
-    pub alphas: NormalizationSigmaProofAlphasBytes,
-    pub xs: NormalizationSigmaProofXsBytes,
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct NewBalanceSigmaProofXsBytes {
-    // proves the relation: Σ C_i * 2^{16i} = Σ (b_i 2^{16i} - Opt(m))G + Σ sk 2^{16i} D_i
-    // if m is None, this is just a normalization proof, otherwise it's a withdrawal proof
-    pub x1: CompressedRistrettoBytes,
-    // proves the key-pair relation: P = sk^-1 * H
-    pub x2: CompressedRistrettoBytes,
-    // proves the relation that the encrypted C value for every chunk is correct, C_i = m_i*G + r_i*H
-    pub x3s: Vec<CompressedRistrettoBytes>,
-    // proves the decrption handle for each chunk is correct, D_i = r_i*P
-    pub x4s: Vec<CompressedRistrettoBytes>,
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct NewBalanceSigmaProofAlphasBytes {
-    // unencrypted amount chunks
-    pub a1s: Vec<ScalarBytes>,
-    // dk
-    pub a2: ScalarBytes,
-    // dk^-1
-    pub a3: ScalarBytes,
-    // encryption randomness
-    pub a4s: Vec<ScalarBytes>,
+    pub alphas: BytesN<576>,
+    pub xs: BytesN<576>,
 }
 
 #[contracttype]
 #[derive(Debug, Clone)]
 pub struct NewBalanceSigmaProofBytes {
-    pub alphas: NewBalanceSigmaProofAlphasBytes,
-    pub xs: NewBalanceSigmaProofXsBytes,
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct TransferSigmaProofXsBytes {
-    // Balance preservation commitment
-    // X₁ = Σ(κ₁ᵢ·2¹⁶ⁱ)·G + (Σ(κ₆ᵢ·2¹⁶ⁱ) - Σ(κ₃ᵢ·2¹⁶ⁱ))·H + Σ(D_cur_i·2¹⁶ⁱ)·κ₂ - Σ(D_new_i·2¹⁶ⁱ)·κ₂
-    pub x1: CompressedRistrettoBytes,
-    // Sender decryption handles for new balance (8 chunks)
-    // X₂ᵢ = κ₆ᵢ·sender_ek
-    pub x2s: Vec<CompressedRistrettoBytes>,
-    // Recipient decryption handles for transfer amount (4 chunks)
-    // X₃ᵢ = κ₃ᵢ·recipient_ek
-    pub x3s: Vec<CompressedRistrettoBytes>,
-    // Transfer amount encryption correctness (4 chunks)
-    // X₄ᵢ = κ₄ᵢ·G + κ₃ᵢ·H
-    pub x4s: Vec<CompressedRistrettoBytes>,
-    // Sender key-pair relationship: P = (sk)^-1 * H
-    // X₅ = κ₅·H
-    pub x5: CompressedRistrettoBytes,
-    // New balance encryption correctness (8 chunks)
-    // X₆ᵢ = κ₁ᵢ·G + κ₆ᵢ·H
-    pub x6s: Vec<CompressedRistrettoBytes>,
-    // Auditor decryption handles for transfer amount (4 chunks)
-    // X₇ᵢ = κ₃ᵢ·auditor_ek
-    pub x7s: Vec<CompressedRistrettoBytes>,
-    // Sender decryption handles for sender amount (4 chunks)
-    // X₈ᵢ = κ₃ᵢ·sender_ek
-    pub x8s: Vec<CompressedRistrettoBytes>,
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct TransferSigmaProofAlphasBytes {
-    pub a1s: Vec<ScalarBytes>, // New balance chunks: a₁ᵢ = κ₁ᵢ - ρ·bᵢ
-    pub a2: ScalarBytes,       // Sender decryption key: a₂ = κ₂ - ρ·sender_dk
-    pub a3s: Vec<ScalarBytes>, // Transfer amount randomness: a₃ᵢ = κ₃ᵢ - ρ·r_amountᵢ
-    pub a4s: Vec<ScalarBytes>, // Transfer amount chunks: a₄ᵢ = κ₄ᵢ - ρ·mᵢ
-    pub a5: ScalarBytes,       // Sender key inverse: a₅ = κ₅ - ρ·sender_dk^(-1)
-    pub a6s: Vec<ScalarBytes>, // New balance randomness: a₆ᵢ = κ₆ᵢ - ρ·r_new_balanceᵢ
+    pub alphas: BytesN<576>,
+    pub xs: BytesN<576>,
 }
 
 #[contracttype]
 #[derive(Debug, Clone)]
 pub struct TransferSigmaProofBytes {
-    pub alphas: TransferSigmaProofAlphasBytes,
-    pub xs: TransferSigmaProofXsBytes,
+    pub alphas: BytesN<832>,
+    pub xs: BytesN<1088>,
 }
 
 #[derive(Debug, Clone)]
@@ -268,239 +204,348 @@ pub struct TransferSigmaProofAlphas {
 
 // Implementation of from_bytes methods for all Impl types
 impl NewBalanceSigmaProofXs {
-    pub fn from_bytes(xs: &NewBalanceSigmaProofXsBytes) -> Result<Self, Error> {
-        let x1 = bytes_to_point(&xs.x1.0.to_array());
-        let x2 = bytes_to_point(&xs.x2.0.to_array());
+    pub fn from_bytes(xs: &BytesN<576>) -> Result<Self, Error> {
+        let bytes = xs.to_array();
+        let mut offset = 0;
 
+        // x1: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut x1_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        x1_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let x1 = bytes_to_point(&x1_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x2: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut x2_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        x2_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let x2 = bytes_to_point(&x2_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x3s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x3s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
-        assert_eq!(xs.x3s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let x = xs.x3s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x3s[i] = point;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x3s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // x4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x4s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
-        assert_eq!(xs.x4s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let x = xs.x4s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x4s[i] = point;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x4s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        debug_assert!(offset == NEW_BALANCE_SIGMA_PROOF_XS_BYTES);
         Ok(Self { x1, x2, x3s, x4s })
     }
 
-    pub fn to_bytes(&self, e: &Env) -> NewBalanceSigmaProofXsBytes {
-        let x1 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x1)));
-        let x2 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x2)));
+    pub fn to_bytes(&self, e: &Env) -> BytesN<576> {
+        let mut bytes = [0u8; NEW_BALANCE_SIGMA_PROOF_XS_BYTES];
+        let mut offset = 0;
 
-        let mut x3s = Vec::new(e);
+        // x1: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x1));
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x2: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x2));
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x3s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x3s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x3s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut x4s = Vec::new(e);
+        // x4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x4s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x4s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
-
-        NewBalanceSigmaProofXsBytes { x1, x2, x3s, x4s }
+        
+        debug_assert!(offset == NEW_BALANCE_SIGMA_PROOF_XS_BYTES);
+        BytesN::from_array(e, &bytes)
     }
 }
 
 impl NewBalanceSigmaProofAlphas {
-    pub fn from_bytes(alphas: &NewBalanceSigmaProofAlphasBytes) -> Result<Self, Error> {
+    pub fn from_bytes(alphas: &BytesN<576>) -> Result<Self, Error> {
+        let bytes = alphas.to_array();
+        let mut offset = 0;
+
+        // a1s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
-        assert_eq!(alphas.a1s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let a = alphas.a1s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a1s[i] = scalar;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a1s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
-        let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
-        let a3 = bytes_to_scalar(&alphas.a3.0.to_array());
+        // a2: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut a2_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        a2_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let a2 = bytes_to_scalar(&a2_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
+        // a3: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut a3_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        a3_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let a3 = bytes_to_scalar(&a3_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // a4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut a4s = [Scalar::ZERO; BALANCE_CHUNKS];
-        assert_eq!(alphas.a4s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let a = alphas.a4s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a4s[i] = scalar;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a4s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        debug_assert!(offset == NEW_BALANCE_SIGMA_PROOF_ALPHAS_BYTES);
         Ok(Self { a1s, a2, a3, a4s })
     }
 
-    pub fn to_bytes(&self, e: &Env) -> NewBalanceSigmaProofAlphasBytes {
-        let mut a1s = Vec::new(e);
+    pub fn to_bytes(&self, e: &Env) -> BytesN<576> {
+        let mut bytes = [0u8; NEW_BALANCE_SIGMA_PROOF_ALPHAS_BYTES];
+        let mut offset = 0;
+
+        // a1s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            a1s.push_back(ScalarBytes::from_scalar(&self.a1s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a1s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let a2 = ScalarBytes::from_scalar(&self.a2, e);
-        let a3 = ScalarBytes::from_scalar(&self.a3, e);
+        // a2: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a2.to_bytes());
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
-        let mut a4s = Vec::new(e);
+        // a3: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a3.to_bytes());
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // a4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            a4s.push_back(ScalarBytes::from_scalar(&self.a4s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a4s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        NewBalanceSigmaProofAlphasBytes { a1s, a2, a3, a4s }
+        debug_assert!(offset == NEW_BALANCE_SIGMA_PROOF_ALPHAS_BYTES);
+        BytesN::from_array(e, &bytes)
     }
 }
 
 impl NormalizationSigmaProofXs {
-    pub fn from_bytes(xs: &NormalizationSigmaProofXsBytes) -> Result<Self, Error> {
-        let x1 = bytes_to_point(&xs.x1.0.to_array());
-        let x2 = bytes_to_point(&xs.x2.0.to_array());
+    pub fn from_bytes(xs: &BytesN<576>) -> Result<Self, Error> {
+        let bytes = xs.to_array();
+        let mut offset = 0;
 
+        // x1: RISTRETTO_FIELD_SIZE_BYTES
+        let mut x1_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        x1_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let x1 = bytes_to_point(&x1_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x2: RISTRETTO_FIELD_SIZE_BYTES
+        let mut x2_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        x2_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let x2 = bytes_to_point(&x2_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x3s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         let mut x3s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
-        assert_eq!(xs.x3s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let x = xs.x3s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x3s[i] = point;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x3s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // x4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         let mut x4s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
-        assert_eq!(xs.x4s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let x = xs.x4s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x4s[i] = point;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x4s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        debug_assert!(offset == NORMALIZATION_SIGMA_PROOF_XS_BYTES);
         Ok(Self { x1, x2, x3s, x4s })
     }
 
-    pub fn to_bytes(&self, e: &Env) -> NormalizationSigmaProofXsBytes {
-        let x1 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x1)));
-        let x2 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x2)));
+    pub fn to_bytes(&self, e: &Env) -> BytesN<576> {
+        let mut bytes = [0u8; NORMALIZATION_SIGMA_PROOF_XS_BYTES];
+        let mut offset = 0;
 
-        let mut x3s = Vec::new(e);
+        // x1: RISTRETTO_FIELD_SIZE_BYTES
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x1));
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x2: RISTRETTO_FIELD_SIZE_BYTES
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x2));
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x3s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         for i in 0..BALANCE_CHUNKS {
-            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x3s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x3s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut x4s = Vec::new(e);
+        // x4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         for i in 0..BALANCE_CHUNKS {
-            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x4s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x4s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
-
-        NormalizationSigmaProofXsBytes { x1, x2, x3s, x4s }
+        
+        debug_assert!(offset == NORMALIZATION_SIGMA_PROOF_XS_BYTES);
+        BytesN::from_array(e, &bytes)
     }
 }
 
 impl NormalizationSigmaProofAlphas {
-    pub fn from_bytes(alphas: &NormalizationSigmaProofAlphasBytes) -> Result<Self, Error> {
+    pub fn from_bytes(alphas: &BytesN<576>) -> Result<Self, Error> {
+        let bytes = alphas.to_array();
+        let mut offset = 0;
+
+        // a1s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
-        assert_eq!(alphas.a1s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let a = alphas.a1s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a1s[i] = scalar;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a1s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
-        let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
-        let a3 = bytes_to_scalar(&alphas.a3.0.to_array());
+        // a2: RISTRETTO_FIELD_SIZE_BYTES
+        let mut a2_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        a2_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let a2 = bytes_to_scalar(&a2_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
+        // a3: RISTRETTO_FIELD_SIZE_BYTES
+        let mut a3_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        a3_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let a3 = bytes_to_scalar(&a3_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // a4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         let mut a4s = [Scalar::ZERO; BALANCE_CHUNKS];
-        assert_eq!(alphas.a4s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let a = alphas.a4s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a4s[i] = scalar;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a4s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        debug_assert!(offset == NORMALIZATION_SIGMA_PROOF_ALPHAS_BYTES);
         Ok(Self { a1s, a2, a3, a4s })
     }
 
-    pub fn to_bytes(&self, e: &Env) -> NormalizationSigmaProofAlphasBytes {
-        let mut a1s = Vec::new(e);
+    pub fn to_bytes(&self, e: &Env) -> BytesN<576> {
+        let mut bytes = [0u8; NORMALIZATION_SIGMA_PROOF_ALPHAS_BYTES];
+        let mut offset = 0;
+
+        // a1s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         for i in 0..BALANCE_CHUNKS {
-            a1s.push_back(ScalarBytes::from_scalar(&self.a1s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a1s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let a2 = ScalarBytes::from_scalar(&self.a2, e);
-        let a3 = ScalarBytes::from_scalar(&self.a3, e);
+        // a2: RISTRETTO_FIELD_SIZE_BYTES
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a2.to_bytes());
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
-        let mut a4s = Vec::new(e);
+        // a3: RISTRETTO_FIELD_SIZE_BYTES
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a3.to_bytes());
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // a4s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES
         for i in 0..BALANCE_CHUNKS {
-            a4s.push_back(ScalarBytes::from_scalar(&self.a4s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a4s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        NormalizationSigmaProofAlphasBytes { a1s, a2, a3, a4s }
+        BytesN::from_array(e, &bytes)
     }
 }
 
 impl TransferSigmaProofXs {
-    pub fn from_bytes(xs: &TransferSigmaProofXsBytes) -> Result<Self, Error> {
-        let x1 = bytes_to_point(&xs.x1.0.to_array());
+    pub fn from_bytes(xs: &BytesN<1088>) -> Result<Self, Error> {
+        let bytes = xs.to_array();
+        let mut offset = 0;
 
+        // x1: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut x1_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        x1_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let x1 = bytes_to_point(&x1_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x2s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x2s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
-        assert_eq!(xs.x2s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let x = xs.x2s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x2s[i] = point;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x2s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // x3s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x3s = [RistrettoPoint::identity(); AMOUNT_CHUNKS];
-        assert_eq!(xs.x3s.len(), AMOUNT_CHUNKS as u32);
-        (0..AMOUNT_CHUNKS).for_each(|i| {
-            let x = xs.x3s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x3s[i] = point;
-        });
+        for i in 0..AMOUNT_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x3s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // x4s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x4s = [RistrettoPoint::identity(); AMOUNT_CHUNKS];
-        assert_eq!(xs.x4s.len(), AMOUNT_CHUNKS as u32);
-        (0..AMOUNT_CHUNKS).for_each(|i| {
-            let x = xs.x4s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x4s[i] = point;
-        });
+        for i in 0..AMOUNT_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x4s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
-        let x5 = bytes_to_point(&xs.x5.0.to_array());
+        // x5: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut x5_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        x5_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let x5 = bytes_to_point(&x5_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
+        // x6s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x6s = [RistrettoPoint::identity(); BALANCE_CHUNKS];
-        assert_eq!(xs.x6s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let x = xs.x6s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x6s[i] = point;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x6s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // x7s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x7s = [RistrettoPoint::identity(); AMOUNT_CHUNKS];
-        assert_eq!(xs.x7s.len(), AMOUNT_CHUNKS as u32);
-        (0..AMOUNT_CHUNKS).for_each(|i| {
-            let x = xs.x7s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x7s[i] = point;
-        });
+        for i in 0..AMOUNT_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x7s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // x8s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut x8s = [RistrettoPoint::identity(); AMOUNT_CHUNKS];
-        assert_eq!(xs.x8s.len(), AMOUNT_CHUNKS as u32);
-        (0..AMOUNT_CHUNKS).for_each(|i| {
-            let x = xs.x8s.get(i as u32).unwrap();
-            let point = bytes_to_point(&x.0.to_array());
-            x8s[i] = point;
-        });
+        for i in 0..AMOUNT_CHUNKS {
+            let mut point_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            point_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            x8s[i] = bytes_to_point(&point_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        debug_assert!(offset == TRANSFER_SIGMA_PROOF_XS_BYTES);
         Ok(Self {
             x1,
             x2s,
@@ -513,110 +558,113 @@ impl TransferSigmaProofXs {
         })
     }
 
-    pub fn to_bytes(&self, e: &Env) -> TransferSigmaProofXsBytes {
-        let x1 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x1)));
+    pub fn to_bytes(&self, e: &Env) -> BytesN<1088> {
+        let mut bytes = [0u8; TRANSFER_SIGMA_PROOF_XS_BYTES];
+        let mut offset = 0;
 
-        let mut x2s = Vec::new(e);
+        // x1: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x1));
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
+
+        // x2s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            x2s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x2s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x2s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut x3s = Vec::new(e);
+        // x3s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..AMOUNT_CHUNKS {
-            x3s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x3s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x3s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut x4s = Vec::new(e);
+        // x4s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..AMOUNT_CHUNKS {
-            x4s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x4s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x4s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let x5 = CompressedRistrettoBytes(BytesN::from_array(e, &point_to_bytes(&self.x5)));
+        // x5: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x5));
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
-        let mut x6s = Vec::new(e);
+        // x6s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            x6s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x6s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x6s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut x7s = Vec::new(e);
+        // x7s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..AMOUNT_CHUNKS {
-            x7s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x7s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x7s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut x8s = Vec::new(e);
+        // x8s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..AMOUNT_CHUNKS {
-            x8s.push_back(CompressedRistrettoBytes(BytesN::from_array(
-                e,
-                &point_to_bytes(&self.x8s[i]),
-            )));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&point_to_bytes(&self.x8s[i]));
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        TransferSigmaProofXsBytes {
-            x1,
-            x2s,
-            x3s,
-            x4s,
-            x5,
-            x6s,
-            x7s,
-            x8s,
-        }
+        debug_assert!(offset == TRANSFER_SIGMA_PROOF_XS_BYTES);
+        BytesN::from_array(e, &bytes)
     }
 }
 
 impl TransferSigmaProofAlphas {
-    pub fn from_bytes(alphas: &TransferSigmaProofAlphasBytes) -> Result<Self, Error> {
+    pub fn from_bytes(alphas: &BytesN<832>) -> Result<Self, Error> {
+        let bytes = alphas.to_array();
+        let mut offset = 0;
+
+        // a1s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut a1s = [Scalar::ZERO; BALANCE_CHUNKS];
-        assert_eq!(alphas.a1s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let a = alphas.a1s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a1s[i] = scalar;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a1s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
-        let a2 = bytes_to_scalar(&alphas.a2.0.to_array());
+        // a2: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut a2_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        a2_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let a2 = bytes_to_scalar(&a2_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
+        // a3s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut a3s = [Scalar::ZERO; AMOUNT_CHUNKS];
-        assert_eq!(alphas.a3s.len(), AMOUNT_CHUNKS as u32);
-        (0..AMOUNT_CHUNKS).for_each(|i| {
-            let a = alphas.a3s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a3s[i] = scalar;
-        });
+        for i in 0..AMOUNT_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a3s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        // a4s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut a4s = [Scalar::ZERO; AMOUNT_CHUNKS];
-        assert_eq!(alphas.a4s.len(), AMOUNT_CHUNKS as u32);
-        (0..AMOUNT_CHUNKS).for_each(|i| {
-            let a = alphas.a4s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a4s[i] = scalar;
-        });
+        for i in 0..AMOUNT_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a4s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
-        let a5 = bytes_to_scalar(&alphas.a5.0.to_array());
+        // a5: RISTRETTO_FIELD_SIZE_BYTES bytes
+        let mut a5_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+        a5_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+        let a5 = bytes_to_scalar(&a5_bytes);
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
+        // a6s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         let mut a6s = [Scalar::ZERO; BALANCE_CHUNKS];
-        assert_eq!(alphas.a6s.len(), BALANCE_CHUNKS as u32);
-        (0..BALANCE_CHUNKS).for_each(|i| {
-            let a = alphas.a6s.get(i as u32).unwrap();
-            let scalar = bytes_to_scalar(&a.0.to_array());
-            a6s[i] = scalar;
-        });
+        for i in 0..BALANCE_CHUNKS {
+            let mut scalar_bytes = [0u8; RISTRETTO_FIELD_SIZE_BYTES];
+            scalar_bytes.copy_from_slice(&bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES]);
+            a6s[i] = bytes_to_scalar(&scalar_bytes);
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
+        }
 
+        debug_assert!(offset == TRANSFER_SIGMA_PROOF_ALPHAS_BYTES);
         Ok(Self {
             a1s,
             a2,
@@ -627,39 +675,44 @@ impl TransferSigmaProofAlphas {
         })
     }
 
-    pub fn to_bytes(&self, e: &Env) -> TransferSigmaProofAlphasBytes {
-        let mut a1s = Vec::new(e);
+    pub fn to_bytes(&self, e: &Env) -> BytesN<832> {
+        let mut bytes = [0u8; TRANSFER_SIGMA_PROOF_ALPHAS_BYTES];
+        let mut offset = 0;
+
+        // a1s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            a1s.push_back(ScalarBytes::from_scalar(&self.a1s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a1s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let a2 = ScalarBytes::from_scalar(&self.a2, e);
+        // a2: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a2.to_bytes());
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
-        let mut a3s = Vec::new(e);
+        // a3s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..AMOUNT_CHUNKS {
-            a3s.push_back(ScalarBytes::from_scalar(&self.a3s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a3s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let mut a4s = Vec::new(e);
+        // a4s: AMOUNT_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..AMOUNT_CHUNKS {
-            a4s.push_back(ScalarBytes::from_scalar(&self.a4s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a4s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        let a5 = ScalarBytes::from_scalar(&self.a5, e);
+        // a5: RISTRETTO_FIELD_SIZE_BYTES bytes
+        bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a5.to_bytes());
+        offset += RISTRETTO_FIELD_SIZE_BYTES;
 
-        let mut a6s = Vec::new(e);
+        // a6s: BALANCE_CHUNKS * RISTRETTO_FIELD_SIZE_BYTES bytes
         for i in 0..BALANCE_CHUNKS {
-            a6s.push_back(ScalarBytes::from_scalar(&self.a6s[i], e));
+            bytes[offset..offset + RISTRETTO_FIELD_SIZE_BYTES].copy_from_slice(&self.a6s[i].to_bytes());
+            offset += RISTRETTO_FIELD_SIZE_BYTES;
         }
 
-        TransferSigmaProofAlphasBytes {
-            a1s,
-            a2,
-            a3s,
-            a4s,
-            a5,
-            a6s,
-        }
+        debug_assert!(offset == TRANSFER_SIGMA_PROOF_ALPHAS_BYTES);
+        BytesN::from_array(e, &bytes)
     }
 }
 
@@ -1021,7 +1074,7 @@ fn fiat_shamir_new_balance_sigma_proof_challenge(
     amount: Option<u64>,
     current_balance: &ConfidentialBalanceBytes,
     new_balance: &ConfidentialBalanceBytes,
-    proof_xs: &NewBalanceSigmaProofXsBytes,
+    proof_xs: &BytesN<576>,
 ) -> Scalar {
     // rho = H(DST, G, H, P, v_{1..4}, (C_cur, D_cur)_{1..8}, (C_new, D_new)_{1..8}, X_{1..18})
     let mut bytes = FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST.to_vec();
@@ -1035,14 +1088,7 @@ fn fiat_shamir_new_balance_sigma_proof_challenge(
     }
     bytes.extend(current_balance.to_bytes());
     bytes.extend(new_balance.to_bytes());
-    bytes.extend(&proof_xs.x1.to_bytes());
-    bytes.extend(&proof_xs.x2.to_bytes());
-    for x in &proof_xs.x3s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x4s {
-        bytes.extend(x.to_bytes());
-    }
+    bytes.extend(proof_xs.to_array());
     new_scalar_from_sha2_512(env, &bytes)
 }
 
@@ -1057,7 +1103,7 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     recipient_amount: &ConfidentialAmountBytes,
     auditor_ek: &CompressedPubkeyBytes,
     auditor_amount: &ConfidentialAmountBytes,
-    proof_xs: &TransferSigmaProofXsBytes,
+    proof_xs: &BytesN<1088>,
 ) -> Scalar {
     // rho = H(DST, G, H, P_s, P_r, P_a, (C_cur, D_cur)_{1..8}, (C_v, D_v)_{1..4}, D_a_{1..4}, D_s_{1..4}, (C_new, D_new)_{1..8}, X_{1..34})
     let mut bytes = FIAT_SHAMIR_TRANSFER_SIGMA_DST.to_vec();
@@ -1068,34 +1114,11 @@ fn fiat_shamir_transfer_sigma_proof_challenge(
     bytes.extend(recipient_ek.0.to_array());
     bytes.extend(auditor_ek.0.to_array());
     bytes.extend(current_balance.to_bytes());
+    bytes.extend(sender_amount.to_bytes());
     bytes.extend(recipient_amount.to_bytes());
-    for EncryptedChunkBytes { handle, .. } in &auditor_amount.0 {
-        bytes.extend(handle.to_bytes());
-    }
-    for EncryptedChunkBytes { handle, .. } in &sender_amount.0 {
-        bytes.extend(handle.to_bytes());
-    }
+    bytes.extend(auditor_amount.to_bytes());
     bytes.extend(new_balance.to_bytes());
-    bytes.extend(&proof_xs.x1.to_bytes());
-    for x in &proof_xs.x2s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x3s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x4s {
-        bytes.extend(x.to_bytes());
-    }
-    bytes.extend(&proof_xs.x5.to_bytes());
-    for x in &proof_xs.x6s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x7s {
-        bytes.extend(x.to_bytes());
-    }
-    for x in &proof_xs.x8s {
-        bytes.extend(x.to_bytes());
-    }
+    bytes.extend(proof_xs.to_array());
 
     new_scalar_from_sha2_512(env, &bytes)
 }
