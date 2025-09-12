@@ -350,6 +350,21 @@ impl ConfidentialToken {
 
         Ok(())
     }
+
+    pub fn get_token_confidential_ext(e: &Env) -> TokenConfidentialExt {
+        // this will panic if token ext doens't exist
+        read_token_confidential_ext(e)
+    }
+
+    pub fn get_account_confidential_ext(e: &Env, acc: Address) -> Result<AccountConfidentialExt, ConfidentialTokenError> {
+        // check this token's confidential extention, fail if extention doesn't exist or it is not enabled
+        let token_ext = read_token_confidential_ext(e);
+        if !token_ext.enabled_flag {
+            return Err(ConfidentialTokenError::ConfidentialTokenNotEnabled);
+        }
+        // this will panic if account ext doens't exist
+        Ok(read_account_confidential_ext(e, acc))
+    }
 }
 
 #[contractevent(data_format = "single-value")]
