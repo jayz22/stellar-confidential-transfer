@@ -13,6 +13,11 @@ name = "demo"
 path = "src/bin/demo.rs"
 required-features = ["demo"]
 
+[[bin]]
+name = "demo_cli"
+path = "src/bin/demo_cli.rs"
+required-features = ["demo"]
+
 [features]
 demo = ["std", "soroban-sdk/testutils", "stellar-confidential-crypto/testutils", "hex", "curve25519-dalek", "serde", "serde_json"]
 testutils = ["soroban-sdk/testutils", "stellar-confidential-crypto/testutils"]
