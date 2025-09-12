@@ -21,110 +21,46 @@ impl FileManager {
         Ok(())
     }
 
-    /// Save a single key pair to JSON file
-    pub fn save_key_pair(&self, name: &str, key_pair: &KeyPair) -> Result<(), String> {
+    /// Save both key pair and encryption public key from crypto types (efficient version)
+    pub fn save_key_pair_and_encryption_pubkey(&self, name: &str, key_pair: &KeyPairHex) -> Result<(), String> {
         self.ensure_directory()?;
-        let json = serde_json::to_string_pretty(key_pair)
+        
+        // Save the key pair
+        let key_pair_json = serde_json::to_string_pretty(key_pair)
             .map_err(|e| format!("Failed to serialize key pair: {}", e))?;
-        let path = format!("{}/{}_key.json", self.base_path, name);
-        fs::write(&path, json).map_err(|e| format!("Failed to write key file: {}", e))?;
-        println!("Key pair saved to {}", path);
+        let key_pair_path = format!("{}/{}_key_pair.json", self.base_path, name);
+        fs::write(&key_pair_path, key_pair_json).map_err(|e| format!("Failed to write key pair file: {}", e))?;
+        println!("Key pair saved to {}", key_pair_path);
+
+        // Save the encryption public key directly from RistrettoPoint
+        let cli_pubkey = CliCompressedPubkeyBytes{bytes: key_pair.public_key.clone()};
+        let pubkey_json = serde_json::to_string_pretty(&cli_pubkey)
+            .map_err(|e| format!("Failed to serialize encryption pubkey: {}", e))?;
+        let pubkey_path = format!("{}/{}_encryption_pubkey.json", self.base_path, name);
+        fs::write(&pubkey_path, pubkey_json).map_err(|e| format!("Failed to write encryption pubkey file: {}", e))?;
+        println!("Encryption public key saved to {}", pubkey_path);
+
         Ok(())
+    }
+
+    /// Load encryption public key from JSON file
+    pub fn load_encryption_pubkey(&self, name: &str) -> Result<CliCompressedPubkeyBytes, String> {
+        let path = format!("{}/{}_encryption_pubkey.json", self.base_path, name);
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read encryption pubkey file {}: {}", path, e))?;
+        let pubkey: CliCompressedPubkeyBytes = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse encryption pubkey file: {}", e))?;
+        Ok(pubkey)
     }
 
     /// Load a single key pair from JSON file
-    pub fn load_key_pair(&self, name: &str) -> Result<KeyPair, String> {
-        let path = format!("{}/{}_key.json", self.base_path, name);
+    pub fn load_key_pair(&self, name: &str) -> Result<KeyPairHex, String> {
+        let path = format!("{}/{}_key_pair.json", self.base_path, name);
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read key file {}: {}", path, e))?;
-        let key_pair: KeyPair = serde_json::from_str(&content)
+        let key_pair: KeyPairHex = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse key file: {}", e))?;
         Ok(key_pair)
-    }
-
-    /// Save account keys to JSON file (for backward compatibility)
-    pub fn save_keys(&self, keys: &AccountKeys) -> Result<(), String> {
-        self.ensure_directory()?;
-        let json = serde_json::to_string_pretty(keys)
-            .map_err(|e| format!("Failed to serialize keys: {}", e))?;
-        let path = format!("{}/keys.json", self.base_path);
-        fs::write(&path, json).map_err(|e| format!("Failed to write keys file: {}", e))?;
-        println!("Keys saved to {}", path);
-        Ok(())
-    }
-
-    /// Load account keys from JSON file (for backward compatibility)
-    pub fn load_keys(&self) -> Result<AccountKeys, String> {
-        let path = format!("{}/keys.json", self.base_path);
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read keys file {}: {}", path, e))?;
-        let keys: AccountKeys = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse keys file: {}", e))?;
-        Ok(keys)
-    }
-
-
-    /// Save rollover data
-    pub fn save_rollover_data(&self, user: &str, data: &RolloverData) -> Result<(), String> {
-        self.ensure_directory()?;
-        let json = serde_json::to_string_pretty(data)
-            .map_err(|e| format!("Failed to serialize rollover data: {}", e))?;
-        let path = format!("{}/{}_rollover.json", self.base_path, user);
-        fs::write(&path, json).map_err(|e| format!("Failed to write rollover file: {}", e))?;
-        println!("Rollover data saved to {}", path);
-        Ok(())
-    }
-
-    /// Load rollover data
-    pub fn load_rollover_data(&self, user: &str) -> Result<RolloverData, String> {
-        let path = format!("{}/{}_rollover.json", self.base_path, user);
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read rollover file {}: {}", path, e))?;
-        let data: RolloverData = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse rollover file: {}", e))?;
-        Ok(data)
-    }
-
-    /// Save transaction data
-    pub fn save_transaction_data(&self, data: &TransactionData) -> Result<(), String> {
-        self.ensure_directory()?;
-        let json = serde_json::to_string_pretty(data)
-            .map_err(|e| format!("Failed to serialize transaction data: {}", e))?;
-        let path = format!("{}/transfer.json", self.base_path);
-        fs::write(&path, json).map_err(|e| format!("Failed to write transfer file: {}", e))?;
-        println!("Transfer data saved to {}", path);
-        Ok(())
-    }
-
-    /// Load transaction data
-    pub fn load_transaction_data(&self) -> Result<TransactionData, String> {
-        let path = format!("{}/transfer.json", self.base_path);
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read transfer file {}: {}", path, e))?;
-        let data: TransactionData = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse transfer file: {}", e))?;
-        Ok(data)
-    }
-
-    /// Save withdrawal data
-    pub fn save_withdrawal_data(&self, user: &str, data: &WithdrawalData) -> Result<(), String> {
-        self.ensure_directory()?;
-        let json = serde_json::to_string_pretty(data)
-            .map_err(|e| format!("Failed to serialize withdrawal data: {}", e))?;
-        let path = format!("{}/{}_withdrawal.json", self.base_path, user);
-        fs::write(&path, json).map_err(|e| format!("Failed to write withdrawal file: {}", e))?;
-        println!("Withdrawal data saved to {}", path);
-        Ok(())
-    }
-
-    /// Load withdrawal data
-    pub fn load_withdrawal_data(&self, user: &str) -> Result<WithdrawalData, String> {
-        let path = format!("{}/{}_withdrawal.json", self.base_path, user);
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read withdrawal file {}: {}", path, e))?;
-        let data: WithdrawalData = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse withdrawal file: {}", e))?;
-        Ok(data)
     }
 
     /// List all files in the data directory
@@ -147,5 +83,207 @@ impl FileManager {
         
         files.sort();
         Ok(files)
+    }
+
+    /// Ensure a specific proof type directory exists
+    fn ensure_proof_directory(&self, proof_type: &str) -> Result<String, String> {
+        let proof_dir = format!("{}/{}", self.base_path, proof_type);
+        let path = Path::new(&proof_dir);
+        if !path.exists() {
+            fs::create_dir_all(path).map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+        Ok(proof_dir)
+    }
+
+    /// Save rollover proof data in structured format
+    pub fn save_rollover_proof_data(
+        &self,
+        proof: &CliNewBalanceProofBytes,
+        encrypted_balance: &CliConfidentialBalanceBytes,
+    ) -> Result<(), String> {
+        let proof_dir = self.ensure_proof_directory("rollover")?;
+        
+        // Save new balance proof
+        let proof_json = serde_json::to_string_pretty(proof)
+            .map_err(|e| format!("Failed to serialize proof: {}", e))?;
+        let proof_path = format!("{}/new_balance_proof.json", proof_dir);
+        fs::write(&proof_path, proof_json)
+            .map_err(|e| format!("Failed to write proof file: {}", e))?;
+        println!("Rollover proof saved to {}", proof_path);
+
+        // Save encrypted new balance
+        let balance_json = serde_json::to_string_pretty(encrypted_balance)
+            .map_err(|e| format!("Failed to serialize balance: {}", e))?;
+        let balance_path = format!("{}/encrypted_new_balance.json", proof_dir);
+        fs::write(&balance_path, balance_json)
+            .map_err(|e| format!("Failed to write balance file: {}", e))?;
+        println!("Encrypted balance saved to {}", balance_path);
+
+        Ok(())
+    }
+
+    /// Save withdrawal proof data in structured format
+    pub fn save_withdrawal_proof_data(
+        &self,
+        proof: &CliNewBalanceProofBytes,
+        encrypted_balance: &CliConfidentialBalanceBytes,
+    ) -> Result<(), String> {
+        let proof_dir = self.ensure_proof_directory("withdrawal")?;
+        
+        // Save new balance proof
+        let proof_json = serde_json::to_string_pretty(proof)
+            .map_err(|e| format!("Failed to serialize proof: {}", e))?;
+        let proof_path = format!("{}/new_balance_proof.json", proof_dir);
+        fs::write(&proof_path, proof_json)
+            .map_err(|e| format!("Failed to write proof file: {}", e))?;
+        println!("Withdrawal proof saved to {}", proof_path);
+
+        // Save encrypted new balance
+        let balance_json = serde_json::to_string_pretty(encrypted_balance)
+            .map_err(|e| format!("Failed to serialize balance: {}", e))?;
+        let balance_path = format!("{}/encrypted_new_balance.json", proof_dir);
+        fs::write(&balance_path, balance_json)
+            .map_err(|e| format!("Failed to write balance file: {}", e))?;
+        println!("Encrypted balance saved to {}", balance_path);
+
+        Ok(())
+    }
+
+    /// Save transfer proof data in structured format
+    pub fn save_transfer_proof_data(
+        &self,
+        proof: &CliTransferProofBytes,
+        encrypted_balance: &CliConfidentialBalanceBytes,
+        encrypted_src_amount: &CliConfidentialAmountBytes,
+        encrypted_dest_amount: &CliConfidentialAmountBytes,
+        encrypted_auditor_amount: &CliConfidentialAmountBytes,
+    ) -> Result<(), String> {
+        let proof_dir = self.ensure_proof_directory("transfer")?;
+        
+        // Save transfer proof
+        let proof_json = serde_json::to_string_pretty(proof)
+            .map_err(|e| format!("Failed to serialize proof: {}", e))?;
+        let proof_path = format!("{}/transfer_proof.json", proof_dir);
+        fs::write(&proof_path, proof_json)
+            .map_err(|e| format!("Failed to write proof file: {}", e))?;
+        println!("Transfer proof saved to {}", proof_path);
+
+        // Save encrypted new balance
+        let balance_json = serde_json::to_string_pretty(encrypted_balance)
+            .map_err(|e| format!("Failed to serialize balance: {}", e))?;
+        let balance_path = format!("{}/encrypted_new_balance.json", proof_dir);
+        fs::write(&balance_path, balance_json)
+            .map_err(|e| format!("Failed to write balance file: {}", e))?;
+        println!("Encrypted new balance saved to {}", balance_path);
+
+        // Save encrypted source amount
+        let src_amount_json = serde_json::to_string_pretty(encrypted_src_amount)
+            .map_err(|e| format!("Failed to serialize src amount: {}", e))?;
+        let src_amount_path = format!("{}/encrypted_src_amount.json", proof_dir);
+        fs::write(&src_amount_path, src_amount_json)
+            .map_err(|e| format!("Failed to write src amount file: {}", e))?;
+        println!("Encrypted source amount saved to {}", src_amount_path);
+
+        // Save encrypted destination amount
+        let dest_amount_json = serde_json::to_string_pretty(encrypted_dest_amount)
+            .map_err(|e| format!("Failed to serialize dest amount: {}", e))?;
+        let dest_amount_path = format!("{}/encrypted_dest_amount.json", proof_dir);
+        fs::write(&dest_amount_path, dest_amount_json)
+            .map_err(|e| format!("Failed to write dest amount file: {}", e))?;
+        println!("Encrypted destination amount saved to {}", dest_amount_path);
+
+        // Save encrypted auditor amount
+        let auditor_amount_json = serde_json::to_string_pretty(encrypted_auditor_amount)
+            .map_err(|e| format!("Failed to serialize auditor amount: {}", e))?;
+        let auditor_amount_path = format!("{}/encrypted_auditor_amount.json", proof_dir);
+        fs::write(&auditor_amount_path, auditor_amount_json)
+            .map_err(|e| format!("Failed to write auditor amount file: {}", e))?;
+        println!("Encrypted auditor amount saved to {}", auditor_amount_path);
+
+        Ok(())
+    }
+
+    /// Load rollover proof data
+    pub fn load_rollover_proof_data(&self) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
+        let proof_dir = format!("{}/rollover", self.base_path);
+        
+        // Load proof
+        let proof_path = format!("{}/new_balance_proof.json", proof_dir);
+        let proof_content = fs::read_to_string(&proof_path)
+            .map_err(|e| format!("Failed to read proof file {}: {}", proof_path, e))?;
+        let proof: CliNewBalanceProofBytes = serde_json::from_str(&proof_content)
+            .map_err(|e| format!("Failed to parse proof file: {}", e))?;
+
+        // Load encrypted balance
+        let balance_path = format!("{}/encrypted_new_balance.json", proof_dir);
+        let balance_content = fs::read_to_string(&balance_path)
+            .map_err(|e| format!("Failed to read balance file {}: {}", balance_path, e))?;
+        let balance: CliConfidentialBalanceBytes = serde_json::from_str(&balance_content)
+            .map_err(|e| format!("Failed to parse balance file: {}", e))?;
+
+        Ok((proof, balance))
+    }
+
+    /// Load withdrawal proof data
+    pub fn load_withdrawal_proof_data(&self) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
+        let proof_dir = format!("{}/withdrawal", self.base_path);
+        
+        // Load proof
+        let proof_path = format!("{}/new_balance_proof.json", proof_dir);
+        let proof_content = fs::read_to_string(&proof_path)
+            .map_err(|e| format!("Failed to read proof file {}: {}", proof_path, e))?;
+        let proof: CliNewBalanceProofBytes = serde_json::from_str(&proof_content)
+            .map_err(|e| format!("Failed to parse proof file: {}", e))?;
+
+        // Load encrypted balance
+        let balance_path = format!("{}/encrypted_new_balance.json", proof_dir);
+        let balance_content = fs::read_to_string(&balance_path)
+            .map_err(|e| format!("Failed to read balance file {}: {}", balance_path, e))?;
+        let balance: CliConfidentialBalanceBytes = serde_json::from_str(&balance_content)
+            .map_err(|e| format!("Failed to parse balance file: {}", e))?;
+
+        Ok((proof, balance))
+    }
+
+    /// Load transfer proof data
+    pub fn load_transfer_proof_data(&self) -> Result<(CliTransferProofBytes, CliConfidentialBalanceBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes), String> {
+        let proof_dir = format!("{}/transfer", self.base_path);
+        
+        // Load proof
+        let proof_path = format!("{}/transfer_proof.json", proof_dir);
+        let proof_content = fs::read_to_string(&proof_path)
+            .map_err(|e| format!("Failed to read proof file {}: {}", proof_path, e))?;
+        let proof: CliTransferProofBytes = serde_json::from_str(&proof_content)
+            .map_err(|e| format!("Failed to parse proof file: {}", e))?;
+
+        // Load encrypted balance
+        let balance_path = format!("{}/encrypted_new_balance.json", proof_dir);
+        let balance_content = fs::read_to_string(&balance_path)
+            .map_err(|e| format!("Failed to read balance file {}: {}", balance_path, e))?;
+        let balance: CliConfidentialBalanceBytes = serde_json::from_str(&balance_content)
+            .map_err(|e| format!("Failed to parse balance file: {}", e))?;
+
+        // Load encrypted source amount
+        let src_amount_path = format!("{}/encrypted_src_amount.json", proof_dir);
+        let src_amount_content = fs::read_to_string(&src_amount_path)
+            .map_err(|e| format!("Failed to read src amount file {}: {}", src_amount_path, e))?;
+        let src_amount: CliConfidentialAmountBytes = serde_json::from_str(&src_amount_content)
+            .map_err(|e| format!("Failed to parse src amount file: {}", e))?;
+
+        // Load encrypted destination amount
+        let dest_amount_path = format!("{}/encrypted_dest_amount.json", proof_dir);
+        let dest_amount_content = fs::read_to_string(&dest_amount_path)
+            .map_err(|e| format!("Failed to read dest amount file {}: {}", dest_amount_path, e))?;
+        let dest_amount: CliConfidentialAmountBytes = serde_json::from_str(&dest_amount_content)
+            .map_err(|e| format!("Failed to parse dest amount file: {}", e))?;
+
+        // Load encrypted auditor amount
+        let auditor_amount_path = format!("{}/encrypted_auditor_amount.json", proof_dir);
+        let auditor_amount_content = fs::read_to_string(&auditor_amount_path)
+            .map_err(|e| format!("Failed to read auditor amount file {}: {}", auditor_amount_path, e))?;
+        let auditor_amount: CliConfidentialAmountBytes = serde_json::from_str(&auditor_amount_content)
+            .map_err(|e| format!("Failed to parse auditor amount file: {}", e))?;
+
+        Ok((proof, balance, src_amount, dest_amount, auditor_amount))
     }
 }

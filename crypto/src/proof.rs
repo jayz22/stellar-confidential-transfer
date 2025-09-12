@@ -55,16 +55,6 @@ pub enum Error {
 }
 
 #[contracttype]
-#[derive(Debug, Clone)]
-pub struct ScalarBytes(pub BytesN<32>);
-
-impl ScalarBytes {
-    pub fn from_scalar(s: &Scalar, e: &Env) -> ScalarBytes {
-        ScalarBytes(BytesN::from_array(e, &s.to_bytes()))
-    }
-}
-
-#[contracttype]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompressedPubkeyBytes(pub BytesN<32>);
 
@@ -98,13 +88,6 @@ pub struct TransferProofBytes {
     pub zkrp_new_balance: RangeProofBytes,
     /// Range proof ensuring that the transferred amount chunks are normalized (i.e., within the 16-bit limit).
     pub zkrp_transfer_amount: RangeProofBytes,
-}
-
-#[contracttype]
-#[derive(Debug, Clone)]
-pub struct NormalizationSigmaProofBytes {
-    pub alphas: BytesN<576>,
-    pub xs: BytesN<576>,
 }
 
 #[contracttype]

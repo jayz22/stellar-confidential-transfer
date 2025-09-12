@@ -1,4 +1,4 @@
-use crate::types::{AccountKeys, KeyPair};
+use crate::types::KeyPairHex;
 use curve25519_dalek::scalar::Scalar;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -19,8 +19,8 @@ impl KeyManager {
         }
     }
 
-    /// Generate a single key pair from a seed
-    pub fn generate_key_pair(&self, seed: u64) -> KeyPair {
+    /// Generate a single key pair from a seed, return (sk, pk)
+    pub fn generate_key_pair(&self, seed: u64) -> (Scalar, RistrettoPoint) {
         // Create a seeded RNG from the provided seed
         let mut rng = StdRng::seed_from_u64(seed);
         
@@ -28,23 +28,14 @@ impl KeyManager {
         let secret = Scalar::random(&mut rng);
         let public = pubkey_from_secret_key(&secret);
 
-        KeyPair {
-            secret_key_hex: hex::encode(secret.to_bytes()),
-            public_key_hex: hex::encode(public.compress().to_bytes()),
-        }
+        (secret, public)
     }
 
-    /// Generate keys from seeds using the existing testutils functions (for backward compatibility)
-    pub fn generate_keys_from_seeds(
-        &self,
-        alice_seed: u64,
-        bob_seed: u64,
-        auditor_seed: u64,
-    ) -> AccountKeys {
-        AccountKeys {
-            alice: self.generate_key_pair(alice_seed),
-            bob: self.generate_key_pair(bob_seed),
-            auditor: self.generate_key_pair(auditor_seed),
+    pub fn generate_key_pair_hex(&self, seed: u64) -> KeyPairHex {
+        let kp = self.generate_key_pair(seed);
+        KeyPairHex {
+            secret_key: hex::encode(kp.0.to_bytes()),
+            public_key: hex::encode(kp.1.compress().to_bytes()),
         }
     }
 
@@ -81,37 +72,37 @@ mod tests {
         let seed = 12345u64;
         
         // Generate the same key pair twice with the same seed
-        let keypair1 = key_manager.generate_key_pair(seed);
-        let keypair2 = key_manager.generate_key_pair(seed);
+        let keypair1 = key_manager.generate_key_pair_hex(seed);
+        let keypair2 = key_manager.generate_key_pair_hex(seed);
         
         // They should be identical (deterministic)
-        assert_eq!(keypair1.secret_key_hex, keypair2.secret_key_hex);
-        assert_eq!(keypair1.public_key_hex, keypair2.public_key_hex);
+        assert_eq!(keypair1.secret_key, keypair2.secret_key);
+        assert_eq!(keypair1.public_key, keypair2.public_key);
     }
 
     #[test]
     fn test_different_seeds_generate_different_keys() {
         let key_manager = KeyManager::new();
         
-        let keypair1 = key_manager.generate_key_pair(12345u64);
-        let keypair2 = key_manager.generate_key_pair(54321u64);
+        let keypair1 = key_manager.generate_key_pair_hex(12345u64);
+        let keypair2 = key_manager.generate_key_pair_hex(54321u64);
         
         // Different seeds should generate different keys
-        assert_ne!(keypair1.secret_key_hex, keypair2.secret_key_hex);
-        assert_ne!(keypair1.public_key_hex, keypair2.public_key_hex);
+        assert_ne!(keypair1.secret_key, keypair2.secret_key);
+        assert_ne!(keypair1.public_key, keypair2.public_key);
     }
 
     #[test]
-    fn test_seeded_key_generation_produces_valid_scalars() {
+    fn test_seeded_key_generation_roundtrip_ok() {
         let key_manager = KeyManager::new();
-        let keypair = key_manager.generate_key_pair(42u64);
+        let keypair = key_manager.generate_key_pair_hex(42u64);
         
         // The generated secret key should be a valid scalar
-        let secret_scalar = key_manager.hex_to_scalar(&keypair.secret_key_hex);
+        let secret_scalar = key_manager.hex_to_scalar(&keypair.secret_key);
         assert!(secret_scalar.is_ok());
         
         // The generated public key should be a valid point
-        let public_point = key_manager.hex_to_point(&keypair.public_key_hex);
+        let public_point = key_manager.hex_to_point(&keypair.public_key);
         assert!(public_point.is_ok());
     }
 }

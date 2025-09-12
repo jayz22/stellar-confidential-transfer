@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use token_client::*;
-use soroban_sdk::xdr::FromXdr;
+use soroban_sdk::Env;
+use stellar_confidential_crypto::ConfidentialBalanceBytes;
 
 #[derive(Parser)]
 #[command(name = "confidential-client")]
@@ -95,14 +96,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("🔑 Generating key pair for '{}'...", name);
             
             let key_manager = KeyManager::new();
-            let key_pair = key_manager.generate_key_pair(seed);
-            
-            file_manager.save_key_pair(&name, &key_pair)?;
+            let key_pair_hex = key_manager.generate_key_pair_hex(seed);
+            file_manager.save_key_pair_and_encryption_pubkey(&name, &key_pair_hex)?;
             
             println!("\n✅ Key pair generated successfully!");
             println!("   Name: {}", name);
             println!("   Seed: {}", seed);
-            println!("   Public key: {}", key_pair.public_key_hex);
+            println!("   Public key: {}", key_pair_hex.public_key);
         }
         
         Commands::GenerateRollover { key_name, available_balance, pending_balance } => {
@@ -112,24 +112,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to load key '{}'. Run 'key-gen' first: {}", key_name, e))?;
             
             let key_manager = KeyManager::new();
-            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key_hex)?;
-            let public_key = key_manager.hex_to_point(&key_pair.public_key_hex)?;
+            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key)?;
+            let public_key = key_manager.hex_to_point(&key_pair.public_key)?;
             
             let proof_generator = ProofGenerator::new();
             
             // Parse available balance from hex
             let available_bytes = hex::decode(&available_balance)
                 .map_err(|e| format!("Invalid available balance hex: {}", e))?;
-            let available_soroban_bytes = soroban_sdk::Bytes::from_slice(&proof_generator.env, &available_bytes);
-            let available_balance_bytes = stellar_confidential_crypto::ConfidentialBalanceBytes::from_xdr(&proof_generator.env, &available_soroban_bytes)
-                .map_err(|_| "Failed to parse available balance bytes".to_string())?;
+            let available_balance_bytes = ConfidentialBalanceBytes(soroban_sdk::BytesN::from_array(&proof_generator.env, &available_bytes.try_into().map_err(|_| "Failed to parse available balance bytes".to_string())?));
             
             // Parse pending balance from hex
             let pending_bytes = hex::decode(&pending_balance)
                 .map_err(|e| format!("Invalid pending balance hex: {}", e))?;
-            let pending_soroban_bytes = soroban_sdk::Bytes::from_slice(&proof_generator.env, &pending_bytes);
-            let pending_balance_bytes = stellar_confidential_crypto::ConfidentialAmountBytes::from_xdr(&proof_generator.env, &pending_soroban_bytes)
-                .map_err(|_| "Failed to parse pending balance bytes".to_string())?;
+            let pending_balance_bytes = stellar_confidential_crypto::ConfidentialAmountBytes(soroban_sdk::BytesN::from_array(&proof_generator.env, &pending_bytes.try_into().map_err(|_| "Failed to parse pending balance bytes".to_string())?));
             
             // Add available and pending balances to get pre-normalization balance
             let balance_pre_normalization_bytes = stellar_confidential_crypto::ConfidentialBalanceBytes::add_amount(&proof_generator.env, &available_balance_bytes, &pending_balance_bytes);
@@ -139,14 +135,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let total_balance_amount = balance_pre_normalization.decrypt(&secret_key) as u64;
             println!("🔓 Decrypted total balance: {} tokens", total_balance_amount);
             
-            let rollover_data = proof_generator.generate_rollover_proof(
+            let (rollover_proof, encrypted_balance) = proof_generator.generate_rollover_proof(
                 &secret_key,
                 &public_key,
                 total_balance_amount as u128,
                 &balance_pre_normalization,
             )?;
             
-            file_manager.save_rollover_data(&key_name, &rollover_data)?;
+            file_manager.save_rollover_proof_data(&rollover_proof, &encrypted_balance)?;
             
             println!("\n✅ Rollover proof generated for '{}'!", key_name);
             println!("   Total balance amount: {}", total_balance_amount);
@@ -163,19 +159,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to load auditor_key '{}': {}", auditor_key, e))?;
             
             let key_manager = KeyManager::new();
-            let from_secret = key_manager.hex_to_scalar(&from_keypair.secret_key_hex)?;
-            let from_public = key_manager.hex_to_point(&from_keypair.public_key_hex)?;
-            let to_public = key_manager.hex_to_point(&to_keypair.public_key_hex)?;
-            let auditor_public = key_manager.hex_to_point(&auditor_keypair.public_key_hex)?;
+            let from_secret = key_manager.hex_to_scalar(&from_keypair.secret_key)?;
+            let from_public = key_manager.hex_to_point(&from_keypair.public_key)?;
+            let to_public = key_manager.hex_to_point(&to_keypair.public_key)?;
+            let auditor_public = key_manager.hex_to_point(&auditor_keypair.public_key)?;
             
             let proof_generator = ProofGenerator::new();
             
             // Parse the encrypted balance from hex
             let balance_bytes = hex::decode(&current_encrypted_balance)
                 .map_err(|e| format!("Invalid balance hex: {}", e))?;
-            let soroban_bytes = soroban_sdk::Bytes::from_slice(&proof_generator.env, &balance_bytes);
-            let balance_bytes_obj = stellar_confidential_crypto::ConfidentialBalanceBytes::from_xdr(&proof_generator.env, &soroban_bytes)
-                .map_err(|_| "Failed to parse balance bytes".to_string())?;
+            let balance_bytes_obj = stellar_confidential_crypto::ConfidentialBalanceBytes(soroban_sdk::BytesN::from_array(&proof_generator.env, &balance_bytes.try_into().map_err(|_| "Failed to parse balance bytes".to_string())?));
             let balance = stellar_confidential_crypto::ConfidentialBalance::from_env_bytes(&balance_bytes_obj);
             
             // Decrypt the balance to get the current transparent balance amount
@@ -188,7 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             let new_balance_amount = current_balance_amount - amount;
             
-            let transfer_data = proof_generator.generate_transfer_proof(
+            let (transfer_proof, encrypted_balance, encrypted_src_amount, encrypted_dest_amount, encrypted_auditor_amount) = proof_generator.generate_transfer_proof(
                 &from_secret,
                 &from_public,
                 &to_public,
@@ -198,7 +192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &auditor_public,
             )?;
             
-            file_manager.save_transaction_data(&transfer_data)?;
+            file_manager.save_transfer_proof_data(&transfer_proof, &encrypted_balance, &encrypted_src_amount, &encrypted_dest_amount, &encrypted_auditor_amount)?;
             
             println!("\n✅ Transfer proof generated!");
             println!("   From: {}", from_key);
@@ -215,17 +209,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to load key '{}': {}", key_name, e))?;
             
             let key_manager = KeyManager::new();
-            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key_hex)?;
-            let public_key = key_manager.hex_to_point(&key_pair.public_key_hex)?;
+            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key)?;
+            let public_key = key_manager.hex_to_point(&key_pair.public_key)?;
             
             let proof_generator = ProofGenerator::new();
             
             // Parse the encrypted balance from hex
             let balance_bytes = hex::decode(&current_encrypted_balance)
                 .map_err(|e| format!("Invalid balance hex: {}", e))?;
-            let soroban_bytes = soroban_sdk::Bytes::from_slice(&proof_generator.env, &balance_bytes);
-            let balance_bytes_obj = stellar_confidential_crypto::ConfidentialBalanceBytes::from_xdr(&proof_generator.env, &soroban_bytes)
-                .map_err(|_| "Failed to parse balance bytes".to_string())?;
+            let balance_bytes_obj = stellar_confidential_crypto::ConfidentialBalanceBytes(soroban_sdk::BytesN::from_array(&proof_generator.env, &balance_bytes.try_into().map_err(|_| "Failed to parse balance bytes".to_string())?));
             let balance = stellar_confidential_crypto::ConfidentialBalance::from_env_bytes(&balance_bytes_obj);
             
             // Decrypt the balance to get the current transparent balance amount
@@ -238,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             let new_balance_amount = current_balance_amount - amount;
             
-            let withdrawal_data = proof_generator.generate_withdrawal_proof(
+            let (withdrawal_proof, encrypted_balance) = proof_generator.generate_withdrawal_proof(
                 &secret_key,
                 &public_key,
                 amount,
@@ -246,7 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &balance,
             )?;
             
-            file_manager.save_withdrawal_data(&key_name, &withdrawal_data)?;
+            file_manager.save_withdrawal_proof_data(&withdrawal_proof, &encrypted_balance)?;
             
             println!("\n✅ Withdrawal proof generated for '{}'!", key_name);
             println!("   Withdrawal amount: {}", amount);
@@ -271,7 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to load key '{}': {}", name, e))?;
             
             println!("📋 Public Key for '{}':", name);
-            println!("   {}", key_pair.public_key_hex);
+            println!("   {}", key_pair.public_key);
         }
         
         Commands::ListPublicKeys => {
@@ -288,7 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let name = file.strip_suffix("_key.json").unwrap();
                     match file_manager.load_key_pair(name) {
                         Ok(key_pair) => {
-                            println!("   {}: {}", name, key_pair.public_key_hex);
+                            println!("   {}: {}", name, key_pair.public_key);
                         }
                         Err(_) => {
                             println!("   {}: (error loading key)", name);
@@ -305,7 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to load key '{}': {}", key_name, e))?;
             
             let key_manager = KeyManager::new();
-            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key_hex)?;
+            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key)?;
             
             let proof_generator = ProofGenerator::new();
             
@@ -330,7 +322,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to load key '{}': {}", key_name, e))?;
             
             let key_manager = KeyManager::new();
-            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key_hex)?;
+            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key)?;
             
             let proof_generator = ProofGenerator::new();
             

@@ -1,9 +1,8 @@
-use crate::types::{ProofData, TransactionData, WithdrawalData, RolloverData};
-use soroban_sdk::{Env, xdr::{ToXdr, FromXdr}};
+use crate::{CliConfidentialAmountBytes, CliConfidentialBalanceBytes, CliNewBalanceProofBytes, CliTransferProofBytes};
+use soroban_sdk::{Env, xdr::FromXdr};
 use stellar_confidential_crypto::{
     confidential_balance::ConfidentialBalance,
-    proof,
-    Scalar, RistrettoPoint,
+    Scalar, RistrettoPoint, proof::testutils::{prove_normalization, prove_withdrawal, prove_transfer}
 };
 
 pub struct ProofGenerator {
@@ -24,9 +23,9 @@ impl ProofGenerator {
         public_key: &RistrettoPoint,
         balance_amount: u128,
         balance_pre_normalization: &ConfidentialBalance,
-    ) -> Result<RolloverData, String> {
+    ) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
         // Use existing testutils function
-        let (proof, new_balance_bytes) = proof::testutils::prove_normalization(
+        let (proof, new_balance_bytes) = prove_normalization(
             &self.env,
             secret_key,
             public_key,
@@ -34,21 +33,38 @@ impl ProofGenerator {
             balance_pre_normalization,
         );
 
-        let proof_bytes = proof.to_xdr(&self.env);
-        let new_balance_xdr = new_balance_bytes.to_xdr(&self.env);
-        let proof_hex = hex::encode(proof_bytes.iter().collect::<Vec<u8>>());
-        let new_balance_hex = hex::encode(new_balance_xdr.iter().collect::<Vec<u8>>());
+        // Convert to CLI-compatible types
+        let cli_proof = CliNewBalanceProofBytes::from_crypto_type(&self.env, &proof);
+        let cli_balance = CliConfidentialBalanceBytes::from_crypto_type(&self.env, &new_balance_bytes);
+        
+        Ok((cli_proof, cli_balance))
 
-        Ok(RolloverData {
-            balance_amount: balance_amount as u64,
-            proof: ProofData {
-                proof_hex,
-                new_balance_hex,
-                amount_alice_hex: None,
-                amount_bob_hex: None,
-                amount_auditor_hex: None,
-            },
-        })
+    }
+
+    /// Generate withdrawal proof using existing testutils
+    pub fn generate_withdrawal_proof(
+        &self,
+        secret_key: &Scalar,
+        public_key: &RistrettoPoint,
+        withdrawal_amount: u64,
+        new_balance_amount: u128,
+        current_balance: &ConfidentialBalance,
+    ) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
+        // Use existing testutils function
+        let (withdrawal_proof, new_balance_bytes) = prove_withdrawal(
+            &self.env,
+            secret_key,
+            public_key,
+            withdrawal_amount,
+            new_balance_amount,
+            current_balance,
+        );
+
+        // Convert to CLI-compatible types
+        let cli_proof = CliNewBalanceProofBytes::from_crypto_type(&self.env, &withdrawal_proof);
+        let cli_balance = CliConfidentialBalanceBytes::from_crypto_type(&self.env, &new_balance_bytes);
+        
+        Ok((cli_proof, cli_balance))
     }
 
     /// Generate transfer proof using existing testutils
@@ -61,10 +77,10 @@ impl ProofGenerator {
         new_balance_amount: u128,
         current_balance: &ConfidentialBalance,
         auditor_public_key: &RistrettoPoint,
-    ) -> Result<TransactionData, String> {
+    ) -> Result<(CliTransferProofBytes, CliConfidentialBalanceBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes), String> {
         // Use existing testutils function
         let (transfer_proof, src_new_balance, src_amount, dest_amount, auditor_amount) =
-            proof::testutils::prove_transfer(
+            prove_transfer(
                 &self.env,
                 src_secret_key,
                 src_public_key,
@@ -75,58 +91,14 @@ impl ProofGenerator {
                 auditor_public_key,
             );
 
-        let proof_hex = hex::encode(transfer_proof.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-        let new_balance_hex = hex::encode(src_new_balance.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-        let amount_alice_hex = hex::encode(src_amount.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-        let amount_bob_hex = hex::encode(dest_amount.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-        let amount_auditor_hex = hex::encode(auditor_amount.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-
-        Ok(TransactionData {
-            transfer_amount,
-            alice_new_balance: new_balance_amount as u64,
-            proof: ProofData {
-                proof_hex,
-                new_balance_hex,
-                amount_alice_hex: Some(amount_alice_hex),
-                amount_bob_hex: Some(amount_bob_hex),
-                amount_auditor_hex: Some(amount_auditor_hex),
-            },
-        })
-    }
-
-    /// Generate withdrawal proof using existing testutils
-    pub fn generate_withdrawal_proof(
-        &self,
-        secret_key: &Scalar,
-        public_key: &RistrettoPoint,
-        withdrawal_amount: u64,
-        new_balance_amount: u128,
-        current_balance: &ConfidentialBalance,
-    ) -> Result<WithdrawalData, String> {
-        // Use existing testutils function
-        let (withdrawal_proof, new_balance_bytes) = proof::testutils::prove_withdrawal(
-            &self.env,
-            secret_key,
-            public_key,
-            withdrawal_amount,
-            new_balance_amount,
-            current_balance,
-        );
-
-        let proof_hex = hex::encode(withdrawal_proof.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-        let new_balance_hex = hex::encode(new_balance_bytes.to_xdr(&self.env).iter().collect::<Vec<u8>>());
-
-        Ok(WithdrawalData {
-            withdrawal_amount,
-            new_balance: new_balance_amount as u64,
-            proof: ProofData {
-                proof_hex,
-                new_balance_hex,
-                amount_alice_hex: None,
-                amount_bob_hex: None,
-                amount_auditor_hex: None,
-            },
-        })
+        // Convert to CLI-compatible types
+        let cli_transfer_proof = CliTransferProofBytes::from_crypto_type(&self.env, &transfer_proof);
+        let cli_src_new_balance = CliConfidentialBalanceBytes::from_crypto_type(&self.env, &src_new_balance);
+        let cli_src_amount = CliConfidentialAmountBytes::from_crypto_type(&self.env, &src_amount);
+        let cli_dest_amount = CliConfidentialAmountBytes::from_crypto_type(&self.env, &dest_amount);
+        let cli_auditor_amount = CliConfidentialAmountBytes::from_crypto_type(&self.env, &auditor_amount);
+        
+        Ok((cli_transfer_proof, cli_src_new_balance, cli_src_amount, cli_dest_amount, cli_auditor_amount))
     }
 
     /// Create a balance with no randomness (for rollover base)
