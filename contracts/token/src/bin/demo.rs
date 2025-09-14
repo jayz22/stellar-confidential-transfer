@@ -3,7 +3,7 @@ mod demo_impl {
     use confidential_token::demo::DemoState;
 
     pub fn run() {
-        let mut demo = DemoState::new();
+        let mut demo = DemoState::new(".data");
         demo.run_full_demo();
     }
 }

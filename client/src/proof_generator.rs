@@ -1,5 +1,5 @@
 use crate::{CliConfidentialAmountBytes, CliConfidentialBalanceBytes, CliNewBalanceProofBytes, CliTransferProofBytes};
-use soroban_sdk::{Env, xdr::FromXdr};
+use soroban_sdk::{Env, FromVal};
 use stellar_confidential_crypto::{
     confidential_balance::ConfidentialBalance,
     Scalar, RistrettoPoint, proof::testutils::{prove_normalization, prove_withdrawal, prove_transfer}
@@ -34,8 +34,8 @@ impl ProofGenerator {
         );
 
         // Convert to CLI-compatible types
-        let cli_proof = CliNewBalanceProofBytes::from_crypto_type(&self.env, &proof);
-        let cli_balance = CliConfidentialBalanceBytes::from_crypto_type(&self.env, &new_balance_bytes);
+        let cli_proof = CliNewBalanceProofBytes::from_val(&self.env, &proof);
+        let cli_balance = CliConfidentialBalanceBytes::from_val(&self.env, &new_balance_bytes);
         
         Ok((cli_proof, cli_balance))
 
@@ -61,8 +61,8 @@ impl ProofGenerator {
         );
 
         // Convert to CLI-compatible types
-        let cli_proof = CliNewBalanceProofBytes::from_crypto_type(&self.env, &withdrawal_proof);
-        let cli_balance = CliConfidentialBalanceBytes::from_crypto_type(&self.env, &new_balance_bytes);
+        let cli_proof = CliNewBalanceProofBytes::from_val(&self.env, &withdrawal_proof);
+        let cli_balance = CliConfidentialBalanceBytes::from_val(&self.env, &new_balance_bytes);
         
         Ok((cli_proof, cli_balance))
     }
@@ -92,11 +92,11 @@ impl ProofGenerator {
             );
 
         // Convert to CLI-compatible types
-        let cli_transfer_proof = CliTransferProofBytes::from_crypto_type(&self.env, &transfer_proof);
-        let cli_src_new_balance = CliConfidentialBalanceBytes::from_crypto_type(&self.env, &src_new_balance);
-        let cli_src_amount = CliConfidentialAmountBytes::from_crypto_type(&self.env, &src_amount);
-        let cli_dest_amount = CliConfidentialAmountBytes::from_crypto_type(&self.env, &dest_amount);
-        let cli_auditor_amount = CliConfidentialAmountBytes::from_crypto_type(&self.env, &auditor_amount);
+        let cli_transfer_proof = CliTransferProofBytes::from_val(&self.env, &transfer_proof);
+        let cli_src_new_balance = CliConfidentialBalanceBytes::from_val(&self.env, &src_new_balance);
+        let cli_src_amount = CliConfidentialAmountBytes::from_val(&self.env, &src_amount);
+        let cli_dest_amount = CliConfidentialAmountBytes::from_val(&self.env, &dest_amount);
+        let cli_auditor_amount = CliConfidentialAmountBytes::from_val(&self.env, &auditor_amount);
         
         Ok((cli_transfer_proof, cli_src_new_balance, cli_src_amount, cli_dest_amount, cli_auditor_amount))
     }
@@ -116,23 +116,17 @@ impl ProofGenerator {
 
     /// Decrypt a confidential balance
     pub fn decrypt_available_balance(&self, secret_key: &Scalar, ciphertext_hex: &str) -> Result<u64, String> {
-        let bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;
-        let soroban_bytes = soroban_sdk::Bytes::from_slice(&self.env, &bytes);
-        
-        let balance_bytes = stellar_confidential_crypto::ConfidentialBalanceBytes::from_xdr(&self.env, &soroban_bytes)
-            .map_err(|_| "Failed to parse as ConfidentialBalance".to_string())?;
-        let balance = stellar_confidential_crypto::ConfidentialBalance::from_env_bytes(&balance_bytes);
+        let available_bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;
+        let available_balance_bytes = stellar_confidential_crypto::ConfidentialBalanceBytes(soroban_sdk::BytesN::from_array(&self.env, &available_bytes.try_into().map_err(|_| "Failed to parse available balance bytes".to_string())?));        
+        let balance = stellar_confidential_crypto::ConfidentialBalance::from_env_bytes(&available_balance_bytes);
         let value = balance.decrypt(secret_key);
         Ok(value as u64)
     }
     
     /// Decrypt a transfer amount
     pub fn decrypt_transfer_amount(&self, secret_key: &Scalar, ciphertext_hex: &str) -> Result<u64, String> {
-        let bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;
-        let soroban_bytes = soroban_sdk::Bytes::from_slice(&self.env, &bytes);
-        
-        let amount_bytes = stellar_confidential_crypto::ConfidentialAmountBytes::from_xdr(&self.env, &soroban_bytes)
-            .map_err(|_| "Failed to parse as ConfidentialAmount".to_string())?;
+        let bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;        
+        let amount_bytes = stellar_confidential_crypto::ConfidentialAmountBytes(soroban_sdk::BytesN::from_array(&self.env, &bytes.try_into().map_err(|_| "Failed to amount bytes".to_string())?));        
         let amount = stellar_confidential_crypto::ConfidentialAmount::from_env_bytes(&amount_bytes);
         let value = amount.decrypt(secret_key);
         Ok(value as u64)

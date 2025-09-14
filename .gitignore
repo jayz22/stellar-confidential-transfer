@@ -5,6 +5,7 @@ target
 .soroban
 .stellar
 .keys
+.data
 .vscode
 .claude
 .tips

@@ -10,7 +10,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
     
-    #[arg(long, default_value = ".keys")]
+    #[arg(long, default_value = ".data")]
     data_dir: String,
 }
 
@@ -142,10 +142,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &balance_pre_normalization,
             )?;
             
-            file_manager.save_rollover_proof_data(&rollover_proof, &encrypted_balance)?;
+            let proof_file = file_manager.save_rollover_proof_data(&key_name, &rollover_proof, &encrypted_balance)?;
             
             println!("\n✅ Rollover proof generated for '{}'!", key_name);
             println!("   Total balance amount: {}", total_balance_amount);
+            println!("   Proof file: {}", proof_file);
         }
         
         Commands::GenerateTransfer { from_key, to_key, auditor_key, amount, current_encrypted_balance } => {
@@ -192,7 +193,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &auditor_public,
             )?;
             
-            file_manager.save_transfer_proof_data(&transfer_proof, &encrypted_balance, &encrypted_src_amount, &encrypted_dest_amount, &encrypted_auditor_amount)?;
+            let proof_file = file_manager.save_transfer_proof_data(&from_key, &to_key, &transfer_proof, &encrypted_balance, &encrypted_src_amount, &encrypted_dest_amount, &encrypted_auditor_amount)?;
             
             println!("\n✅ Transfer proof generated!");
             println!("   From: {}", from_key);
@@ -200,6 +201,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   Amount: {}", amount);
             println!("   Current balance: {}", current_balance_amount);
             println!("   New balance: {}", new_balance_amount);
+            println!("   Proof file: {}", proof_file);
         }
         
         Commands::GenerateWithdrawal { key_name, amount, current_encrypted_balance } => {
@@ -238,12 +240,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &balance,
             )?;
             
-            file_manager.save_withdrawal_proof_data(&withdrawal_proof, &encrypted_balance)?;
+            let proof_file = file_manager.save_withdrawal_proof_data(&key_name, &withdrawal_proof, &encrypted_balance)?;
             
             println!("\n✅ Withdrawal proof generated for '{}'!", key_name);
             println!("   Withdrawal amount: {}", amount);
             println!("   Current balance: {}", current_balance_amount);
             println!("   New balance: {}", new_balance_amount);
+            println!("   Proof file: {}", proof_file);
         }
         
         Commands::List => {
