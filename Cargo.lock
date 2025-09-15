@@ -1755,6 +1755,7 @@ version = "0.1.0"
 dependencies = [
  "bulletproofs",
  "curve25519-dalek",
+ "hex",
  "merlin",
  "pollard-kangaroo",
  "rand",

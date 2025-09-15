@@ -5,6 +5,8 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::Identity;
 use soroban_sdk::{contracttype, BytesN, Env};
 use core::assert_eq;
+#[cfg(any(test, feature = "testutils"))]
+use core::fmt::Display;
 
 pub const AMOUNT_CHUNKS: usize = 4;
 pub const BALANCE_CHUNKS: usize = 8;
@@ -36,6 +38,27 @@ impl ConfidentialBalanceBytes {
     }
 }
 
+#[cfg(any(test, feature = "testutils"))]
+impl Display for ConfidentialBalanceBytes {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut digits = hex::encode(self.0.to_array());
+
+        if f.alternate() {
+            digits.insert_str(0, "0x");
+        }
+
+        if let Some(p) = f.precision() {
+            if digits.len() > p {
+                let cut = p.saturating_sub(3); // keep room for "..."
+                digits.truncate(cut);
+                digits.push_str("...");
+            }
+        }
+
+        f.pad(&digits)
+    }
+}
+
 #[contracttype]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfidentialAmountBytes(pub BytesN<256>); // 4 chunks
@@ -59,6 +82,27 @@ impl ConfidentialAmountBytes {
 
     pub fn from_u64_with_no_randomness(e: &Env, amount: u64) -> Self {
         ConfidentialAmount::new_amount_with_no_randomness(amount).to_env_bytes(e)
+    }
+}
+
+#[cfg(any(test, feature = "testutils"))]
+impl Display for ConfidentialAmountBytes {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut digits = hex::encode(self.0.to_array());
+
+        if f.alternate() {
+            digits.insert_str(0, "0x");
+        }
+
+        if let Some(p) = f.precision() {
+            if digits.len() > p {
+                let cut = p.saturating_sub(3); // keep room for "..."
+                digits.truncate(cut);
+                digits.push_str("...");
+            }
+        }
+        
+        f.pad(&digits)
     }
 }
 

@@ -9,7 +9,7 @@ crate-type = ["lib"]
 doctest = false
 
 [[bin]]
-name = "client"
+name = "conf-token-client"
 path = "src/bin/client.rs"
 
 [dependencies]

@@ -6,39 +6,15 @@ use crate::{
     utils::{read_account_confidential_ext, read_token_confidential_ext},
     ConfidentialTokenClient,
 };
-use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal};
+use soroban_sdk::{testutils::{Address as _, Events}, Address, Env, IntoVal};
 use stellar_confidential_crypto::{
     proof::CompressedPubkeyBytes,
     ConfidentialAmountBytes, ConfidentialBalanceBytes,
 };
-use std::time::Instant;
+use std::{process::abort, time::Instant};
 use token_client::{
     FileManager, IOManager
 };
-// Helper functions to display encrypted types as truncated hex
-fn display_compressed_pubkey(pubkey: &CompressedPubkeyBytes, max_len: Option<usize>) -> String {
-    let hex = hex::encode(pubkey.0.to_array());
-    match max_len {
-        Some(len) if hex.len() > len => format!("{}...", &hex[..len]),
-        _ => hex,
-    }
-}
-
-fn display_confidential_balance(balance: &ConfidentialBalanceBytes, max_len: Option<usize>) -> String {
-    let hex = hex::encode(balance.0.to_array());
-    match max_len {
-        Some(len) if hex.len() > len => format!("{}...", &hex[..len]),
-        _ => hex,
-    }
-}
-
-fn display_confidential_amount(amount: &ConfidentialAmountBytes, max_len: Option<usize>) -> String {
-    let hex = hex::encode(amount.0.to_array());
-    match max_len {
-        Some(len) if hex.len() > len => format!("{}...", &hex[..len]),
-        _ => hex,
-    }
-}
 
 struct ObserverState {
     pub total_confidential_supply: u128,
@@ -52,46 +28,95 @@ struct ObserverState {
     pub bob_counter: u32,
 }
 
-impl Default for ObserverState {
-    fn default() -> Self {
-        let env = Env::default();
+impl ObserverState {
+    pub fn new(env: &Env) -> Self {
         Self {
             total_confidential_supply: 0,
             alice_transparent: 0,
-            alice_available: ConfidentialBalanceBytes::zero(&env),
-            alice_pending: ConfidentialAmountBytes::zero(&env),
+            alice_available: ConfidentialBalanceBytes::zero(env),
+            alice_pending: ConfidentialAmountBytes::zero(env),
             alice_counter: 0,
             bob_transparent: 0,
-            bob_available: ConfidentialBalanceBytes::zero(&env),
-            bob_pending: ConfidentialAmountBytes::zero(&env),
+            bob_available: ConfidentialBalanceBytes::zero(env),
+            bob_pending: ConfidentialAmountBytes::zero(env),
             bob_counter: 0,
         }
     }
 }
 
 impl ObserverState {
+    pub fn print_state_diagram(&self, _env: &Env, title: &str) {
+        println!("\n═══════════════════════════════════════════════════════════════════════════════════════");
+        println!(" {:^87}", title);
+        println!("═══════════════════════════════════════════════════════════════════════════════════════");
+        println!();
+        println!("                       ┌───────────────────────────────────────┐");
+        println!("                       │               TOKEN STATE             │");
+        println!("                       │  Total Confidential supply:  {:>8} │", self.total_confidential_supply);
+        println!("                       └───────────────────────────────────────┘");
+        println!();
+        println!("  ┌───────────────────────────────────┐          ┌───────────────────────────────────┐");
+        println!("  │               ALICE               │          │                  BOB              │");
+        println!("  │ ┌───────────────────────────────┐ │          │ ┌───────────────────────────────┐ │");
+        println!("  │ │ Transparent: {:>16} │ │          │ │ Transparent: {:>16} │ │", self.alice_transparent, self.bob_transparent);
+        println!("  │ │ Available:   {:>#16.12} │ │          │ │ Available:   {:>#16.12} │ │", self.alice_available, self.bob_available);
+        println!("  │ │ Pending:     {:>#16.12} │ │          │ │ Pending:     {:>#16.12} │ │", self.alice_pending, self.bob_pending);
+        println!("  │ │ Counter:     {:>16} │ │          │ │ Counter:     {:>16} │ │", self.alice_counter, self.bob_counter);
+        println!("  │ └───────────────────────────────┘ │          │ └───────────────────────────────┘ │");
+        println!("  └───────────────────────────────────┘          └───────────────────────────────────┘");
+        println!("═══════════════════════════════════════════════════════════════════════════════════════");
 
-    pub fn print_state_diagram(&self, title: &str) {
-        println!("\n═══════════════════════════════════════════════════════════════════");
-        println!(" {}", title);
-        println!("═══════════════════════════════════════════════════════════════════");
-        println!();
-        println!("                   ┌─────────────────────────────────┐");
-        println!("                   │         TOKEN STATE             │");
-        println!("                   │  Total Confidential supply:  {:>8} │", self.total_confidential_supply);
-        println!("                   └─────────────────────────────────┘");
-        println!();
-        println!("  ┌─────────────────────────────┐          ┌─────────────────────────────┐");
-        println!("  │           ALICE             │          │            BOB              │");
-        println!("  │ ┌─────────────────────────┐ │          │ ┌─────────────────────────┐ │");
-        println!("  │ │ Transparent: {:>15} │ │          │ │ Transparent: {:>15} │ │", self.alice_transparent, self.bob_transparent);
-        println!("  │ │ Available:   {:>15} │ │          │ │ Available:   {:>15} │ │", display_confidential_balance(&self.alice_available, Some(12)), display_confidential_balance(&self.bob_available, Some(12)));
-        println!("  │ │ Pending:     {:>15} │ │          │ │ Pending:     {:>15} │ │", display_confidential_amount(&self.alice_pending, Some(12)), display_confidential_amount(&self.bob_pending, Some(12)));
-        println!("  │ │ Counter:     {:>15} │ │          │ │ Counter:     {:>15} │ │", self.alice_counter, self.bob_counter);
-        println!("  │ └─────────────────────────┘ │          │ └─────────────────────────┘ │");
-        println!("  └─────────────────────────────┘          └─────────────────────────────┘");
-        println!("═══════════════════════════════════════════════════════════════════");
+        // Print events
+        // println!("\n📅 EVENTS:");
+        // println!("───────────────────────────────────────────────────────────────────────────────────────");
+        // let events = env.events().all();
+        // if events.is_empty() {
+        //     println!("  No events recorded");
+        // } else {
+        //     for (i, event) in events.iter().enumerate() {
+        //         println!("  {}. {:?}", i + 1, event);
+        //     }
+        // }
+        // println!("═══════════════════════════════════════════════════════════════════════════════════════");
     }
+}
+
+#[test]
+fn test_diagram() {
+    let env = Env::default();
+    let os = ObserverState::new(&env);
+    os.print_state_diagram(&env, "TEST PRINT");
+}
+
+#[test]
+fn test_events_capture() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Create a token and perform some operations
+    let admin = Address::generate(&env);
+    let alice = Address::generate(&env);
+
+    let token_contract = env.register(
+        ConfidentialToken,
+        (&admin, 7u32, soroban_sdk::String::from_str(&env, "Test Token"), soroban_sdk::String::from_str(&env, "TEST"))
+    );
+
+    let token = ConfidentialTokenClient::new(&env, &token_contract);
+
+    // Perform a mint operation to generate an event
+    token.mint(&alice, &1000i128);
+
+    // Check events
+    println!("Testing event capture...");
+    let events = env.events().all();
+    println!("Number of events captured: {}", events.len());
+    for (i, event) in events.iter().enumerate() {
+        println!("Event {}: {:?}", i + 1, event);
+    }
+
+    let os = ObserverState::new(&env);
+    os.print_state_diagram(&env, "TEST WITH EVENTS");
 }
 
 pub struct DemoState {
@@ -173,7 +198,7 @@ impl DemoState {
             auditor_encryption_key: None,
             file_manager: FileManager::new(data_dir),
             io_manager,
-            observer_state: ObserverState::default()
+            observer_state: ObserverState::new(&env)
         }
     }
 
@@ -212,93 +237,79 @@ impl DemoState {
         result
     }
 
-    pub fn step_1_load_keys(&mut self) {
-        println!("\n🔑 STEP 1: Load Cryptographic Keys");
-        println!("Loading encryption keys from client-generated files...\n");
+    pub fn step_1_setup(&mut self) {
+        println!("\n🔑 STEP 1: Setup Keys and Confidential Token Extension");
+        println!("Setting up encryption keys and registering token/accounts...\n");
 
-        println!("📋 Generate keys first using client:");
-        println!("   Terminal 1: cargo run --bin client -- key-gen --seed 12345 --name alice");
-        println!("   Terminal 1: cargo run --bin client -- key-gen --seed 67890 --name bob");
-        println!("   Terminal 1: cargo run --bin client -- key-gen --seed 99999 --name auditor");
+        println!("📋 Generate all keys (alice, bob, auditor) first using client (in Terminal 1):");
+        println!("───────────────────────────────────────────────────────────────────────────────");
+        println!("cargo run --bin client -- key-gen --seed 12345 --name alice && \\");
+        println!("cargo run --bin client -- key-gen --seed 67890 --name bob && \\");
+        println!("cargo run --bin client -- key-gen --seed 99999 --name auditor");
+        println!("───────────────────────────────────────────────────────────────────────────────");
         println!();
 
+        println!("\n🔐 Loading encryption keys (alice, bob, auditor)...");
+        self.io_manager.pause();
+
         // Load Alice's encryption key
-        let alice_file = self.io_manager.read_file_path("Enter Alice's key file name", "alice");
-        match self.file_manager.load_encryption_pubkey(&alice_file) {
+        match self.file_manager.load_encryption_pubkey("alice") {
             Ok(alice_key) => {
                 self.alice_encryption_key = Some(alice_key.into_val(&self.env));
-                println!("✅ Alice's encryption key loaded from: {}_encryption_pubkey.json", alice_file);
+                println!("✅ Alice's encryption key loaded");
             }
             Err(e) => {
                 println!("❌ Failed to load Alice's encryption key: {}", e);
-                return;
+                println!("   Make sure you've run the key generation commands above!");
+                std::process::abort();
             }
         }
 
         // Load Bob's encryption key
-        let bob_file = self.io_manager.read_file_path("Enter Bob's key file name", "bob");
-        match self.file_manager.load_encryption_pubkey(&bob_file) {
+        match self.file_manager.load_encryption_pubkey("bob") {
             Ok(bob_key) => {
                 self.bob_encryption_key = Some(bob_key.into_val(&self.env));
-                println!("✅ Bob's encryption key loaded from: {}_encryption_pubkey.json", bob_file);
+                println!("✅ Bob's encryption key loaded");
             }
             Err(e) => {
                 println!("❌ Failed to load Bob's encryption key: {}", e);
-                return;
+                println!("   Make sure you've run the key generation commands above!");
+                std::process::abort();
             }
         }
 
         // Load Auditor's encryption key
-        let auditor_file = self.io_manager.read_file_path("Enter Auditor's key file name", "auditor");
-        match self.file_manager.load_encryption_pubkey(&auditor_file) {
+        match self.file_manager.load_encryption_pubkey("auditor") {
             Ok(auditor_key) => {
                 self.auditor_encryption_key = Some(auditor_key.into_val(&self.env));
-                println!("✅ Auditor's encryption key loaded from: {}_encryption_pubkey.json", auditor_file);
+                println!("✅ Auditor's encryption key loaded");
             }
             Err(e) => {
                 println!("❌ Failed to load Auditor's encryption key: {}", e);
-                return;
+                println!("   Make sure you've run the key generation commands above!");
+                std::process::abort();
             }
         }
-        
-        println!("\n📝 Note: All keys successfully loaded!");
-        println!("   Off-chain: Keys generated by client");
-        println!("   On-chain: Keys loaded by demo contract");
-        
-        self.io_manager.pause();
-    }
 
-    pub fn step_2_register_token(&mut self) {
-        println!("\n🔐 STEP 4: Register Confidential Token Extension");
-        println!("Registering the token for confidential transfers with auditor...\n");
+        println!("\n🔐 Registering Confidential Token Extension");
         self.token.register_confidential_token(self.auditor_encryption_key.as_ref().unwrap());
 
-        println!("\n✅ Token registered for confidential transfers!");
-        println!("   Auditor public key registered {}", display_compressed_pubkey(self.auditor_encryption_key.as_ref().unwrap(), None));
-        println!("   Confidential extension enabled");
-        println!("\n📝 Note: The auditor can decrypt all transfer amounts");
-        println!("   for regulatory compliance");
-        
-        self.io_manager.pause();
-    }
-
-    pub fn step_5_register_accounts(&mut self) {
-        println!("\n👤 STEP 5: Register User Accounts for Confidential Transfers");
-        println!("Registering Alice and Bob's accounts...\n");
-
+        println!("👤 Registering user accounts...");
         self.token.register_account(&self.alice, self.alice_encryption_key.as_ref().unwrap());
         self.token.register_account(&self.bob, self.bob_encryption_key.as_ref().unwrap());
 
-        println!("\n✅ Accounts registered:");
-        println!("   - Alice's encryption key registered");
-        println!("   - Bob's encryption key registered");
-        println!("   Both can now receive confidential transfers");
-        
+        println!("\n✅ Setup completed successfully!");
+        println!("   - Keys loaded from client-generated files");
+        println!("   - Token registered with auditor key: {}", self.auditor_encryption_key.as_ref().unwrap());
+        println!("   - 📝 Note: The auditor can decrypt all transfer amounts for regulatory compliance");
+        println!("   - Token authorized Alice as a user. Alice's encryption key: {}", self.alice_encryption_key.as_ref().unwrap());
+        println!("   - Token authorized Bob as a user. Bob's encryption key: {}", self.bob_encryption_key.as_ref().unwrap());
+
         self.io_manager.pause();
     }
 
-    pub fn step_6_mint_tokens(&mut self) {
-        println!("\n💰 STEP 6: Mint Tokens (Transparent Balance)");
+    pub fn step_2_mint_tokens(&mut self) {
+        println!("\n💰 STEP 2: Mint Tokens (Transparent Balance)");
         println!("Minting initial tokens to Alice and Bob...\n");
         
         // Get mint amounts from user input
@@ -316,13 +327,13 @@ impl DemoState {
 
         // Update observer state
         self.update_observation();
-        self.observer_state.print_state_diagram("STATE AFTER MINTING");
+        self.observer_state.print_state_diagram(&self.env, "STATE AFTER MINTING");
         
         self.io_manager.pause();
     }
 
-    pub fn step_7_deposit_confidential(&mut self) -> (u64, u64) {
-        println!("\n🔒 STEP 7: Deposit to Confidential Balance");
+    pub fn step_3_deposit_confidential(&mut self) {
+        println!("\n🔒 STEP 3: Deposit to Confidential Balance");
         println!("Moving tokens from transparent to confidential pending balance...\n");
 
         // Get deposit amounts from user input
@@ -341,32 +352,22 @@ impl DemoState {
 
         // Update observer state
         self.update_observation();
-        self.observer_state.print_state_diagram("STATE AFTER DEPOSITS");
+        self.observer_state.print_state_diagram(&self.env, "STATE AFTER DEPOSITS");
         
         self.io_manager.pause();
-        (alice_deposit, bob_deposit)
     }
 
-    pub fn step_8_alice_rollover(&mut self) -> ConfidentialBalanceBytes {
-        println!("\n🔄 STEP 8: Alice Rollover (Pending → Available)");
+    pub fn step_4_alice_rollover(&mut self) {
+        println!("\n🔄 STEP 4: Alice Rollover (Pending → Available)");
         println!("Alice moves her pending balance to available balance...\n");
 
         // Get Alice's current available and pending balances from the contract
-        let alice_available_balance = self.env.as_contract(&self.token.address, || {
-            let ext = read_account_confidential_ext(&self.env, self.alice.clone());
-            ext.available_balance
-        });
-        let alice_pending_balance = self.env.as_contract(&self.token.address, || {
-            let ext = read_account_confidential_ext(&self.env, self.alice.clone());
-            ext.pending_balance
-        });
-
-        // Convert to hex for the client command
-        let available_balance_hex = display_confidential_balance(&alice_available_balance, None);
-        let pending_balance_hex = display_confidential_amount(&alice_pending_balance, None);
+        let alice_ext = self.token.get_account_confidential_ext(&self.alice);
+        let alice_available_balance = alice_ext.available_balance;
+        let alice_pending_balance = alice_ext.pending_balance;
 
         println!("📋 Generate rollover proof first using client:");
-        println!("   Terminal 1: cargo run --bin client -- generate-rollover --key-name alice --available-balance {} --pending-balance {}", available_balance_hex, pending_balance_hex);
+        println!("   Terminal 1: conf-token-client generate-rollover --key-name alice --available-balance {} --pending-balance {}", alice_available_balance, alice_pending_balance);
         println!();
 
         // Get rollover proof file path
@@ -380,7 +381,7 @@ impl DemoState {
             }
             Err(e) => {
                 println!("❌ Failed to load rollover proof: {}", e);
-                return ConfidentialBalanceBytes::zero(&self.env);
+                return;
             }
         };
 
@@ -405,22 +406,18 @@ impl DemoState {
 
         // Update observer state
         self.update_observation();
-        self.observer_state.print_state_diagram("STATE AFTER ALICE'S ROLLOVER");
+        self.observer_state.print_state_diagram(&self.env, "STATE AFTER ALICE'S ROLLOVER");
         
         self.io_manager.pause();
-        alice_new_balance_bytes
     }
 
-    pub fn step_9_confidential_transfer(&mut self, alice_balance_bytes: ConfidentialBalanceBytes, alice_available: u64) -> (u64, ConfidentialBalanceBytes, ConfidentialAmountBytes, ConfidentialAmountBytes, ConfidentialAmountBytes) {
-        println!("\n💸 STEP 9: Confidential Transfer (Alice → Bob)");
+    pub fn step_5_confidential_transfer(&mut self) {
+        println!("\n💸 STEP 5: Confidential Transfer (Alice → Bob)");
         println!("Alice sends tokens to Bob confidentially...\n");
-        println!("Alice's available balance: {} CDT", alice_available);
         
-        // Convert alice_balance_bytes to hex for the client command
-        let alice_balance_hex = display_confidential_balance(&alice_balance_bytes, None);
-        
+        let alice_available_balance = self.token.get_account_confidential_ext(&self.alice).available_balance;
         println!("📋 Generate transfer proof first using client:");
-        println!("   Terminal 1: cargo run --bin client -- generate-transfer --from-key alice --to-key bob --auditor-key auditor --amount 100 --current-encrypted-balance {}", alice_balance_hex);
+        println!("   Terminal 1: conf-token-client generate-transfer --from-key alice --to-key bob --auditor-key auditor --amount 100 --current-encrypted-balance {}", alice_available_balance);
         println!();
 
         // Get transfer proof file path
@@ -435,8 +432,7 @@ impl DemoState {
                 }
                 Err(e) => {
                     println!("❌ Failed to load transfer proof: {}", e);
-                    return (0, ConfidentialBalanceBytes::zero(&self.env), ConfidentialAmountBytes::zero(&self.env),
-                           ConfidentialAmountBytes::zero(&self.env), ConfidentialAmountBytes::zero(&self.env));
+                    return;
                 }
             };
 
@@ -469,15 +465,13 @@ impl DemoState {
 
         // Update observer state
         self.update_observation();
-        self.observer_state.print_state_diagram("STATE AFTER CONFIDENTIAL TRANSFER");
+        self.observer_state.print_state_diagram(&self.env, "STATE AFTER CONFIDENTIAL TRANSFER");
         
         self.io_manager.pause();
-        // (transfer_data.transfer_amount, alice_balance_after_transfer, amount_for_alice, amount_for_bob, amount_for_auditor)
-        (100, alice_balance_after_transfer, amount_for_alice, amount_for_bob, amount_for_auditor)  // TODO: Figure out actual transfer amount
     }
 
-    pub fn step_11_bob_rollover(&mut self) -> ConfidentialBalanceBytes {
-        println!("\n🔄 STEP 11: Bob Rollover (Pending → Available)");
+    pub fn step_6_bob_rollover(&mut self) {
+        println!("\n🔄 STEP 6: Bob Rollover (Pending → Available)");
         println!("Bob moves his total pending balance to available...\n");
 
         // let bob_total = bob_deposit + transfer_amount;
@@ -485,21 +479,11 @@ impl DemoState {
         println!("Processing Bob's rollover...");
 
         // Get Bob's current available and pending balances from the contract
-        let bob_available_balance = self.env.as_contract(&self.token.address, || {
-            let ext = read_account_confidential_ext(&self.env, self.bob.clone());
-            ext.available_balance
-        });
-        let bob_pending_balance = self.env.as_contract(&self.token.address, || {
-            let ext = read_account_confidential_ext(&self.env, self.bob.clone());
-            ext.pending_balance
-        });
-
-        // Convert to hex for the client command
-        let available_balance_hex = display_confidential_balance(&bob_available_balance, None);
-        let pending_balance_hex = display_confidential_amount(&bob_pending_balance, None);
-
+        let bob_ext = self.token.get_account_confidential_ext(&self.bob);
+        let bob_available_balance = bob_ext.available_balance;
+        let bob_pending_balance = bob_ext.pending_balance;
         println!("📋 Generate rollover proof first using client:");
-        println!("   Terminal 1: cargo run --bin client -- generate-rollover --key-name bob --available-balance {} --pending-balance {}", available_balance_hex, pending_balance_hex);
+        println!("   Terminal 1: conf-token-client generate-rollover --key-name bob --available-balance {} --pending-balance {}", bob_available_balance, bob_pending_balance);
         println!();
 
         // Get rollover proof file path
@@ -513,7 +497,7 @@ impl DemoState {
             }
             Err(e) => {
                 println!("❌ Failed to load rollover proof: {}", e);
-                return ConfidentialBalanceBytes::zero(&self.env);
+                return;
             }
         };
 
@@ -531,33 +515,26 @@ impl DemoState {
         });
 
         println!("\n✅ Rollover completed!");
-        // println!("   Bob's {} CDT now available for confidential transfers", bob_rollover.balance_amount);
-        // TODO: Figure out the proper balance amount from proof data
         println!("   Bob's pending balance now available for confidential transfers");
         println!("   Off-chain: Proof generated by client");
         println!("   On-chain: Proof verified and executed by contract");
 
         // Update observer state
         self.update_observation();
-        self.observer_state.print_state_diagram("STATE AFTER BOB'S ROLLOVER");
+        self.observer_state.print_state_diagram(&self.env, "STATE AFTER BOB'S ROLLOVER");
         
         self.io_manager.pause();
-        bob_new_balance_bytes
     }
 
-    pub fn step_12_withdraw(&mut self, bob_balance_bytes: ConfidentialBalanceBytes, bob_available: u64) {
-        println!("\n💵 STEP 12: Withdraw (Confidential → Transparent)");
+    pub fn step_7_withdraw(&mut self) {
+        println!("\n💵 STEP 7: Withdraw (Confidential → Transparent)");
         println!("Bob withdraws from confidential to transparent...\n");
-        println!("Bob's available balance: {} CDT", bob_available);
         
         // Get withdrawal amount from user input
         let withdrawal_amount = self.io_manager.read_u64("Enter amount for Bob to withdraw", 100);
-
-        // Convert bob_balance_bytes to hex for the client command
-        let bob_balance_hex = display_confidential_balance(&bob_balance_bytes, None);
-
+        let bob_available_balance = self.token.get_account_confidential_ext(&self.bob).available_balance;
         println!("\n📋 Generate withdrawal proof first using client:");
-        println!("   Terminal 1: cargo run --bin client -- generate-withdrawal --key-name bob --amount {} --current-encrypted-balance {}", withdrawal_amount, bob_balance_hex);
+        println!("   Terminal 1: conf-token-client generate-withdrawal --key-name bob --amount {} --current-encrypted-balance {}", withdrawal_amount, bob_available_balance);
         println!();
 
         // Get withdrawal proof file path
@@ -591,15 +568,13 @@ impl DemoState {
 
         println!("\n✅ Withdrawal completed!");
         println!("   {} CDT moved from confidential to transparent", withdrawal_amount);
-        // println!("   Bob's new confidential balance: {} CDT", withdrawal_data.new_balance);
-        // TODO: Figure out the new balance from proof data
         println!("   Withdrawal processed successfully");
         println!("   Off-chain: Proof generated by client");
         println!("   On-chain: Proof verified and executed by contract");
 
         // Update observer state
         self.update_observation();
-        self.observer_state.print_state_diagram("FINAL STATE AFTER WITHDRAWAL");
+        self.observer_state.print_state_diagram(&self.env, "FINAL STATE AFTER WITHDRAWAL");
 
         println!("\n📊 FINAL ACCOUNTING:");
         println!("   All balances are shown in the state diagram above");
@@ -610,16 +585,13 @@ impl DemoState {
     }
 
     pub fn run_full_demo(&mut self) {
-        self.step_1_load_keys();
-        self.step_2_register_token();
-        self.step_5_register_accounts();
-        self.step_6_mint_tokens();
-        let (alice_deposit, bob_deposit) = self.step_7_deposit_confidential();
-        let alice_balance = self.step_8_alice_rollover();
-        let (transfer_amount, alice_new_balance, amount_alice, amount_bob, amount_auditor) =
-            self.step_9_confidential_transfer(alice_balance, alice_deposit);
-        let bob_balance = self.step_11_bob_rollover();
-        self.step_12_withdraw(bob_balance, bob_deposit + transfer_amount);
+        self.step_1_setup();
+        self.step_2_mint_tokens();
+        self.step_3_deposit_confidential();
+        self.step_4_alice_rollover();
+        self.step_5_confidential_transfer();
+        self.step_6_bob_rollover();
+        self.step_7_withdraw();
 
         println!("\n╔══════════════════════════════════════════════════════════════════╗");
         println!("║                    DEMO COMPLETED SUCCESSFULLY!                   ║");

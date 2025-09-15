@@ -9,7 +9,7 @@ crate-type = ["lib", "cdylib"]
 doctest = false
 
 [[bin]]
-name = "demo"
+name = "conf-token-demo"
 path = "src/bin/demo.rs"
 required-features = ["demo"]
 

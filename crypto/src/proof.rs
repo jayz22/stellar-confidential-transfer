@@ -11,6 +11,7 @@ use crate::{
 };
 use curve25519_dalek::{traits::Identity, RistrettoPoint, Scalar};
 use soroban_sdk::{contracttype, BytesN, Env};
+use core::fmt::Display;
 use core::iter::Extend;
 
 const FIAT_SHAMIR_NEW_BALANCE_SIGMA_DST: &[u8] =
@@ -65,6 +66,14 @@ impl CompressedPubkeyBytes {
 
     pub fn from_point(e: &Env, pt: &RistrettoPoint) -> Self {
         CompressedPubkeyBytes(BytesN::from_array(e, &point_to_bytes(&pt)))
+    }
+}
+
+#[cfg(any(test, feature = "testutils"))]
+impl Display for CompressedPubkeyBytes {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let hex = hex::encode(self.0.to_array());
+        write!(f, "{}", hex)
     }
 }
 

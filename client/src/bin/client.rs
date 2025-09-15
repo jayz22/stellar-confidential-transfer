@@ -1,7 +1,13 @@
 use clap::{Parser, Subcommand};
 use token_client::*;
-use soroban_sdk::Env;
 use stellar_confidential_crypto::ConfidentialBalanceBytes;
+use std::path::PathBuf;
+
+fn default_data_dir() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let path = PathBuf::from(home).join(".config").join("conf-token");
+    path.to_string_lossy().to_string()
+}
 
 #[derive(Parser)]
 #[command(name = "confidential-client")]
@@ -9,8 +15,8 @@ use stellar_confidential_crypto::ConfidentialBalanceBytes;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    
-    #[arg(long, default_value = ".data")]
+
+    #[arg(long, default_value_t = default_data_dir())]
     data_dir: String,
 }
 
