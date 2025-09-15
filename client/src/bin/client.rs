@@ -99,16 +99,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     match cli.command {
         Commands::KeyGen { seed, name } => {
-            println!("🔑 Generating key pair for '{}'...", name);
+            println!("\n🔑 Generating key pair for '{}'...", name);
             
             let key_manager = KeyManager::new();
             let key_pair_hex = key_manager.generate_key_pair_hex(seed);
-            file_manager.save_key_pair_and_encryption_pubkey(&name, &key_pair_hex)?;
-            
-            println!("\n✅ Key pair generated successfully!");
+
+            println!("✅ Key pair generated successfully!");
             println!("   Name: {}", name);
             println!("   Seed: {}", seed);
             println!("   Public key: {}", key_pair_hex.public_key);
+            file_manager.save_key_pair_and_encryption_pubkey(&name, &key_pair_hex)?;
+            
         }
         
         Commands::GenerateRollover { key_name, available_balance, pending_balance } => {
@@ -148,11 +149,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &balance_pre_normalization,
             )?;
             
-            let proof_file = file_manager.save_rollover_proof_data(&key_name, &rollover_proof, &encrypted_balance)?;
-            
             println!("\n✅ Rollover proof generated for '{}'!", key_name);
             println!("   Total balance amount: {}", total_balance_amount);
-            println!("   Proof file: {}", proof_file);
+            let _proof_file = file_manager.save_rollover_proof_data(&key_name, &rollover_proof, &encrypted_balance)?;
         }
         
         Commands::GenerateTransfer { from_key, to_key, auditor_key, amount, current_encrypted_balance } => {
@@ -199,15 +198,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &auditor_public,
             )?;
             
-            let proof_file = file_manager.save_transfer_proof_data(&from_key, &to_key, &transfer_proof, &encrypted_balance, &encrypted_src_amount, &encrypted_dest_amount, &encrypted_auditor_amount)?;
-            
             println!("\n✅ Transfer proof generated!");
             println!("   From: {}", from_key);
             println!("   To: {}", to_key);
             println!("   Amount: {}", amount);
             println!("   Current balance: {}", current_balance_amount);
             println!("   New balance: {}", new_balance_amount);
-            println!("   Proof file: {}", proof_file);
+            let _proof_file = file_manager.save_transfer_proof_data(&from_key, &to_key, &transfer_proof, &encrypted_balance, &encrypted_src_amount, &encrypted_dest_amount, &encrypted_auditor_amount)?;
         }
         
         Commands::GenerateWithdrawal { key_name, amount, current_encrypted_balance } => {
@@ -246,13 +243,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &balance,
             )?;
             
-            let proof_file = file_manager.save_withdrawal_proof_data(&key_name, &withdrawal_proof, &encrypted_balance)?;
-            
             println!("\n✅ Withdrawal proof generated for '{}'!", key_name);
             println!("   Withdrawal amount: {}", amount);
             println!("   Current balance: {}", current_balance_amount);
             println!("   New balance: {}", new_balance_amount);
-            println!("   Proof file: {}", proof_file);
+            let _proof_file = file_manager.save_withdrawal_proof_data(&key_name, &withdrawal_proof, &encrypted_balance)?;
         }
         
         Commands::List => {

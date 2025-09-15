@@ -2,6 +2,7 @@ use crate::types::*;
 use std::fs;
 use std::path::Path;
 use std::io::{self, Write};
+use std::process::Command;
 use chrono::Local;
 
 pub struct IOManager;
@@ -72,6 +73,10 @@ impl FileManager {
         }
     }
 
+    pub fn base_path(&self) -> &str {
+        self.base_path.as_str()
+    }
+
     pub fn ensure_directory(&self) -> Result<(), String> {
         let path = Path::new(&self.base_path);
         if !path.exists() {
@@ -89,7 +94,11 @@ impl FileManager {
             .map_err(|e| format!("Failed to serialize key pair: {}", e))?;
         let key_pair_path = format!("{}/{}_key_pair.json", self.base_path, name);
         fs::write(&key_pair_path, key_pair_json).map_err(|e| format!("Failed to write key pair file: {}", e))?;
-        println!("Key pair saved to {}", key_pair_path);
+
+        // Show file details with ls -la
+        let _ = Command::new("ls")
+            .args(&["-la", &key_pair_path])
+            .status();
 
         // Save the encryption public key directly from RistrettoPoint
         let cli_pubkey = CliCompressedPubkeyBytes{bytes: key_pair.public_key.clone()};
@@ -97,7 +106,11 @@ impl FileManager {
             .map_err(|e| format!("Failed to serialize encryption pubkey: {}", e))?;
         let pubkey_path = format!("{}/{}_encryption_pubkey.json", self.base_path, name);
         fs::write(&pubkey_path, pubkey_json).map_err(|e| format!("Failed to write encryption pubkey file: {}", e))?;
-        println!("Encryption public key saved to {}", pubkey_path);
+
+        // Show file details with ls -la
+        let _ = Command::new("ls")
+            .args(&["-la", &pubkey_path])
+            .status();
 
         Ok(())
     }
@@ -122,9 +135,10 @@ impl FileManager {
         Ok(key_pair)
     }
 
-    /// Load rollover proof data from a specific file
-    pub fn load_rollover_proof_data(&self, file_path: &str) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
-        let content = fs::read_to_string(file_path)
+    /// Load rollover proof data from a file (filename only, uses base path)
+    pub fn load_rollover_proof_data(&self, filename: &str) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
+        let file_path = format!("{}/{}", self.base_path, filename);
+        let content = fs::read_to_string(&file_path)
             .map_err(|e| format!("Failed to read rollover data file {}: {}", file_path, e))?;
         let data: RolloverProofData = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse rollover data file: {}", e))?;
@@ -132,9 +146,10 @@ impl FileManager {
         Ok((data.proof, data.encrypted_new_balance))
     }
 
-    /// Load withdrawal proof data from a specific file
-    pub fn load_withdrawal_proof_data(&self, file_path: &str) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
-        let content = fs::read_to_string(file_path)
+    /// Load withdrawal proof data from a file (filename only, uses base path)
+    pub fn load_withdrawal_proof_data(&self, filename: &str) -> Result<(CliNewBalanceProofBytes, CliConfidentialBalanceBytes), String> {
+        let file_path = format!("{}/{}", self.base_path, filename);
+        let content = fs::read_to_string(&file_path)
             .map_err(|e| format!("Failed to read withdrawal data file {}: {}", file_path, e))?;
         let data: WithdrawalProofData = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse withdrawal data file: {}", e))?;
@@ -142,9 +157,10 @@ impl FileManager {
         Ok((data.proof, data.encrypted_new_balance))
     }
 
-    /// Load transfer proof data from a specific file
-    pub fn load_transfer_proof_data(&self, file_path: &str) -> Result<(CliTransferProofBytes, CliConfidentialBalanceBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes), String> {
-        let content = fs::read_to_string(file_path)
+    /// Load transfer proof data from a file (filename only, uses base path)
+    pub fn load_transfer_proof_data(&self, filename: &str) -> Result<(CliTransferProofBytes, CliConfidentialBalanceBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes, CliConfidentialAmountBytes), String> {
+        let file_path = format!("{}/{}", self.base_path, filename);
+        let content = fs::read_to_string(&file_path)
             .map_err(|e| format!("Failed to read transfer data file {}: {}", file_path, e))?;
         let data: TransferProofData = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse transfer data file: {}", e))?;
@@ -209,7 +225,11 @@ impl FileManager {
             .map_err(|e| format!("Failed to serialize rollover data: {}", e))?;
         fs::write(&data_path, data_json)
             .map_err(|e| format!("Failed to write rollover data file: {}", e))?;
-        println!("Rollover proof data saved to {}", data_path);
+
+        // Show file details with ls -la
+        let _ = Command::new("ls")
+            .args(&["-la", &data_path])
+            .status();
 
         Ok(data_path)
     }
@@ -238,7 +258,11 @@ impl FileManager {
             .map_err(|e| format!("Failed to serialize withdrawal data: {}", e))?;
         fs::write(&data_path, data_json)
             .map_err(|e| format!("Failed to write withdrawal data file: {}", e))?;
-        println!("Withdrawal proof data saved to {}", data_path);
+
+        // Show file details with ls -la
+        let _ = Command::new("ls")
+            .args(&["-la", &data_path])
+            .status();
 
         Ok(data_path)
     }
@@ -274,7 +298,11 @@ impl FileManager {
             .map_err(|e| format!("Failed to serialize transfer data: {}", e))?;
         fs::write(&data_path, data_json)
             .map_err(|e| format!("Failed to write transfer data file: {}", e))?;
-        println!("Transfer proof data saved to {}", data_path);
+
+        // Show file details with ls -la
+        let _ = Command::new("ls")
+            .args(&["-la", &data_path])
+            .status();
 
         Ok(data_path)
     }
