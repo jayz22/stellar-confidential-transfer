@@ -6,7 +6,7 @@ use crate::{
     utils::{read_account_confidential_ext, read_token_confidential_ext},
     ConfidentialTokenClient,
 };
-use soroban_sdk::{testutils::{Address as _, Events}, Address, Env, IntoVal};
+use soroban_sdk::{testutils::Address as _, Address, Env, IntoVal};
 use stellar_confidential_crypto::{
     proof::CompressedPubkeyBytes,
     ConfidentialAmountBytes, ConfidentialBalanceBytes,
@@ -15,31 +15,68 @@ use std::{process::abort, time::Instant};
 use token_client::{
     FileManager, IOManager
 };
+use serde::Serialize;
+use chrono::Local;
 
+#[derive(Serialize)]
 struct ObserverState {
+    pub timestamp: String,
     pub total_confidential_supply: u128,
     pub alice_transparent: i128,
+    #[serde(skip)]
     pub alice_available: ConfidentialBalanceBytes,
+    pub alice_available_hex: String,
+    #[serde(skip)]
     pub alice_pending: ConfidentialAmountBytes,
+    pub alice_pending_hex: String,
     pub alice_counter: u32,
     pub bob_transparent: i128,
+    #[serde(skip)]
     pub bob_available: ConfidentialBalanceBytes,
+    pub bob_available_hex: String,
+    #[serde(skip)]
     pub bob_pending: ConfidentialAmountBytes,
+    pub bob_pending_hex: String,
     pub bob_counter: u32,
+    #[serde(skip)]
+    pub observation_file: String,
 }
 
 impl ObserverState {
-    pub fn new(env: &Env) -> Self {
-        Self {
+    pub fn new(env: &Env, data_dir: &str) -> Self {
+        // Initialize observation file path in the same directory as file_manager
+        let observation_file = format!("{}/observation_state.json", data_dir);
+
+        let state = Self {
+            timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             total_confidential_supply: 0,
             alice_transparent: 0,
             alice_available: ConfidentialBalanceBytes::zero(env),
+            alice_available_hex: "0x0".to_string(),
             alice_pending: ConfidentialAmountBytes::zero(env),
+            alice_pending_hex: "0x0".to_string(),
             alice_counter: 0,
             bob_transparent: 0,
             bob_available: ConfidentialBalanceBytes::zero(env),
+            bob_available_hex: "0x0".to_string(),
             bob_pending: ConfidentialAmountBytes::zero(env),
+            bob_pending_hex: "0x0".to_string(),
             bob_counter: 0,
+            observation_file,
+        };
+
+        // Save initial state
+        state.save_to_file();
+        state
+    }
+
+    fn save_to_file(&self) {
+        if let Ok(json_str) = serde_json::to_string_pretty(&self) {
+            if let Err(e) = std::fs::write(&self.observation_file, json_str) {
+                println!("⚠️  Failed to save observation: {}", e);
+            } else {
+                println!("💾 Observation saved to: {}", self.observation_file);
+            }
         }
     }
 }
@@ -84,7 +121,7 @@ impl ObserverState {
 #[test]
 fn test_diagram() {
     let env = Env::default();
-    let os = ObserverState::new(&env);
+    let os = ObserverState::new(&env, ".data");
     os.print_state_diagram(&env, "TEST PRINT");
 }
 
@@ -115,7 +152,7 @@ fn test_events_capture() {
         println!("Event {}: {:?}", i + 1, event);
     }
 
-    let os = ObserverState::new(&env);
+    let os = ObserverState::new(&env, ".data");
     os.print_state_diagram(&env, "TEST WITH EVENTS");
 }
 
@@ -198,11 +235,14 @@ impl DemoState {
             auditor_encryption_key: None,
             file_manager: FileManager::new(data_dir),
             io_manager,
-            observer_state: ObserverState::new(&env)
+            observer_state: ObserverState::new(&env, data_dir)
         }
     }
 
     pub fn update_observation(&mut self) {
+        // Update timestamp
+        self.observer_state.timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
         // Update transparent balances
         self.observer_state.alice_transparent = self.token.balance(&self.alice);
         self.observer_state.bob_transparent = self.token.balance(&self.bob);
@@ -211,6 +251,11 @@ impl DemoState {
         self.env.as_contract(&self.token.address, || {
             let alice_ext = read_account_confidential_ext(&self.env, self.alice.clone());
             let bob_ext = read_account_confidential_ext(&self.env, self.bob.clone());
+
+            self.observer_state.alice_available_hex = format!("{}", alice_ext.available_balance);
+            self.observer_state.alice_pending_hex = format!("{}", alice_ext.pending_balance);
+            self.observer_state.bob_available_hex = format!("{}", bob_ext.available_balance);
+            self.observer_state.bob_pending_hex = format!("{}", bob_ext.pending_balance);
 
             self.observer_state.alice_available = alice_ext.available_balance;
             self.observer_state.alice_pending = alice_ext.pending_balance;
@@ -224,6 +269,9 @@ impl DemoState {
             let token_ext = read_token_confidential_ext(&self.env);
             self.observer_state.total_confidential_supply = token_ext.total_confidential_supply;
         });
+
+        // Save updated observation to the same file
+        self.observer_state.save_to_file();
     }
     
     fn time_operation<F, R>(&self, operation_name: &str, operation: F) -> R 
@@ -243,9 +291,9 @@ impl DemoState {
 
         println!("📋 Generate all keys (alice, bob, auditor) first using client (in Terminal 1):");
         println!("───────────────────────────────────────────────────────────────────────────────");
-        println!("cargo run --bin client -- key-gen --seed 12345 --name alice && \\");
-        println!("cargo run --bin client -- key-gen --seed 67890 --name bob && \\");
-        println!("cargo run --bin client -- key-gen --seed 99999 --name auditor");
+        println!("conf-token-client key-gen --seed 12345 --name alice && \\");
+        println!("conf-token-client key-gen --seed 67890 --name bob && \\");
+        println!("conf-token-client key-gen --seed 99999 --name auditor");
         println!("───────────────────────────────────────────────────────────────────────────────");
         println!();
 
@@ -261,7 +309,7 @@ impl DemoState {
             Err(e) => {
                 println!("❌ Failed to load Alice's encryption key: {}", e);
                 println!("   Make sure you've run the key generation commands above!");
-                std::process::abort();
+                abort();
             }
         }
 
@@ -274,7 +322,7 @@ impl DemoState {
             Err(e) => {
                 println!("❌ Failed to load Bob's encryption key: {}", e);
                 println!("   Make sure you've run the key generation commands above!");
-                std::process::abort();
+                abort();
             }
         }
 
@@ -287,7 +335,7 @@ impl DemoState {
             Err(e) => {
                 println!("❌ Failed to load Auditor's encryption key: {}", e);
                 println!("   Make sure you've run the key generation commands above!");
-                std::process::abort();
+                abort();
             }
         }
 
@@ -297,6 +345,8 @@ impl DemoState {
         println!("👤 Registering user accounts...");
         self.token.register_account(&self.alice, self.alice_encryption_key.as_ref().unwrap());
         self.token.register_account(&self.bob, self.bob_encryption_key.as_ref().unwrap());
+
+        self.io_manager.pause();
 
         println!("\n✅ Setup completed successfully!");
         println!("   - Keys loaded from client-generated files");

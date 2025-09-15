@@ -14,7 +14,7 @@ path = "src/bin/demo.rs"
 required-features = ["demo"]
 
 [features]
-demo = ["std", "testutils", "hex", "curve25519-dalek", "serde", "serde_json", "token-client"]
+demo = ["std", "testutils", "hex", "curve25519-dalek", "serde", "serde_json", "chrono", "token-client"]
 testutils = ["soroban-sdk/testutils", "stellar-confidential-crypto/testutils"]
 std = []
 
@@ -26,6 +26,7 @@ hex = { version = "0.4", optional = true }
 curve25519-dalek = { version = "4.1", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
+chrono = { version = "0.4", optional = true }
 token-client = { path = "../../client", optional = true }
 
 [dev-dependencies]
