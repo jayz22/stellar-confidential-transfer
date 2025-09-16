@@ -115,17 +115,15 @@ impl ProofGenerator {
     }
 
     /// Decrypt a confidential balance
-    pub fn decrypt_available_balance(&self, secret_key: &Scalar, ciphertext_hex: &str) -> Result<u64, String> {
-        let available_bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;
-        let available_balance_bytes = stellar_confidential_crypto::ConfidentialBalanceBytes(soroban_sdk::BytesN::from_array(&self.env, &available_bytes.try_into().map_err(|_| "Failed to parse available balance bytes".to_string())?));        
+    pub fn decrypt_available_balance(&self, secret_key: &Scalar, bytes: &[u8]) -> Result<u128, String> {
+        let available_balance_bytes = stellar_confidential_crypto::ConfidentialBalanceBytes(soroban_sdk::BytesN::from_array(&self.env, &bytes.try_into().map_err(|_| "Failed to parse available balance bytes".to_string())?));        
         let balance = stellar_confidential_crypto::ConfidentialBalance::from_env_bytes(&available_balance_bytes);
         let value = balance.decrypt(secret_key);
-        Ok(value as u64)
+        Ok(value)
     }
     
     /// Decrypt a transfer amount
-    pub fn decrypt_transfer_amount(&self, secret_key: &Scalar, ciphertext_hex: &str) -> Result<u64, String> {
-        let bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;        
+    pub fn decrypt_transfer_amount(&self, secret_key: &Scalar, bytes: &[u8]) -> Result<u64, String> {
         let amount_bytes = stellar_confidential_crypto::ConfidentialAmountBytes(soroban_sdk::BytesN::from_array(&self.env, &bytes.try_into().map_err(|_| "Failed to amount bytes".to_string())?));        
         let amount = stellar_confidential_crypto::ConfidentialAmount::from_env_bytes(&amount_bytes);
         let value = amount.decrypt(secret_key);

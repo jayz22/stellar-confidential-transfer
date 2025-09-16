@@ -67,10 +67,14 @@ pub struct FileManager {
 }
 
 impl FileManager {
-    pub fn new(base_path: &str) -> Self {
-        Self {
-            base_path: base_path.to_string(),
+    pub fn new(base_path: &str) -> Result<Self, String> {
+        let path = Path::new(&base_path);
+        if !path.exists() {
+            fs::create_dir_all(path).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
+        Ok(Self {
+            base_path: base_path.to_string(),
+        })
     }
 
     pub fn base_path(&self) -> &str {

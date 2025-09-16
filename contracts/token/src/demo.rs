@@ -186,6 +186,7 @@ impl DemoState {
 
         println!("Creating a confidential token and accounts (admin, alice, bob)...\n");
 
+        let file_manager = FileManager::new(data_dir).unwrap();
         let io_manager = IOManager::new();
 
         // Get user input for token parameters
@@ -233,7 +234,7 @@ impl DemoState {
             alice_encryption_key: None,
             bob_encryption_key: None,
             auditor_encryption_key: None,
-            file_manager: FileManager::new(data_dir),
+            file_manager,
             io_manager,
             observer_state: ObserverState::new(&env, data_dir)
         }

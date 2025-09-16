@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use token_client::*;
-use stellar_confidential_crypto::ConfidentialBalanceBytes;
+use stellar_confidential_crypto::{ConfidentialBalanceBytes, CONFIDENTIAL_AMOUNT_BYTES, CONFIDENTIAL_BALANCE_BYTES};
 use std::path::PathBuf;
 
 fn default_data_dir() -> String {
@@ -75,17 +75,9 @@ enum Commands {
     
     /// Show all public keys
     ListPublicKeys,
-    
-    /// Decrypt a confidential balance using a secret key
-    DecryptAvailableBalance {
-        #[arg(long)]
-        key_name: String,
-        #[arg(long)]
-        ciphertext_hex: String,
-    },
-    
-    /// Decrypt a transfer amount using a secret key
-    DecryptTransferAmount {
+
+    /// Decrypt a transfer amount or a balance using a secret key
+    Decrypt {
         #[arg(long)]
         key_name: String,
         #[arg(long)]
@@ -95,7 +87,7 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let file_manager = FileManager::new(&cli.data_dir);
+    let file_manager = FileManager::new(&cli.data_dir)?;
     
     match cli.command {
         Commands::KeyGen { seed, name } => {
@@ -293,9 +285,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
-        Commands::DecryptAvailableBalance { key_name, ciphertext_hex } => {
-            println!("🔓 Decrypting available balance for '{}'...", key_name);
+
+        Commands::Decrypt { key_name, ciphertext_hex } => {
+            println!("🔓 Decrypting ciphertext for '{}'...", key_name);
             
             let key_pair = file_manager.load_key_pair(&key_name)
                 .map_err(|e| format!("Failed to load key '{}': {}", key_name, e))?;
@@ -304,43 +296,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key)?;
             
             let proof_generator = ProofGenerator::new();
-            
-            match proof_generator.decrypt_available_balance(&secret_key, &ciphertext_hex) {
-                Ok(value) => {
-                    println!("\n✅ Decryption successful!");
-                    println!("   Key: {}", key_name);
-                    println!("   Type: ConfidentialBalance");
-                    println!("   Available Balance: {}", value);
+
+            let bytes = hex::decode(ciphertext_hex).map_err(|e| format!("Invalid hex: {}", e))?;        
+            if bytes.len() == CONFIDENTIAL_AMOUNT_BYTES {
+                match proof_generator.decrypt_transfer_amount(&secret_key, &bytes) {
+                    Ok(value) => {
+                        println!("\n✅ Decryption successful!");
+                        println!("   Key: {}", key_name);
+                        println!("   Type: ConfidentialAmount");
+                        println!("   Transfer Amount: {}", value);
+                    }
+                    Err(e) => {
+                        println!("❌ Decryption failed: {}", e);
+                        println!("   This key may not be authorized to decrypt this amount");
+                    }
+                }                
+            } else if bytes.len() == CONFIDENTIAL_BALANCE_BYTES {
+                match proof_generator.decrypt_available_balance(&secret_key, &bytes) {
+                    Ok(value) => {
+                        println!("\n✅ Decryption successful!");
+                        println!("   Key: {}", key_name);
+                        println!("   Type: ConfidentialBalance");
+                        println!("   Available Balance: {}", value);
+                    }
+                    Err(e) => {
+                        println!("❌ Decryption failed: {}", e);
+                        println!("   This key may not be authorized to decrypt this balance");
+                    }
                 }
-                Err(e) => {
-                    println!("❌ Decryption failed: {}", e);
-                    println!("   This key may not be authorized to decrypt this balance");
-                }
-            }
-        }
-        
-        Commands::DecryptTransferAmount { key_name, ciphertext_hex } => {
-            println!("🔓 Decrypting transfer amount for '{}'...", key_name);
-            
-            let key_pair = file_manager.load_key_pair(&key_name)
-                .map_err(|e| format!("Failed to load key '{}': {}", key_name, e))?;
-            
-            let key_manager = KeyManager::new();
-            let secret_key = key_manager.hex_to_scalar(&key_pair.secret_key)?;
-            
-            let proof_generator = ProofGenerator::new();
-            
-            match proof_generator.decrypt_transfer_amount(&secret_key, &ciphertext_hex) {
-                Ok(value) => {
-                    println!("\n✅ Decryption successful!");
-                    println!("   Key: {}", key_name);
-                    println!("   Type: ConfidentialAmount");
-                    println!("   Transfer Amount: {}", value);
-                }
-                Err(e) => {
-                    println!("❌ Decryption failed: {}", e);
-                    println!("   This key may not be authorized to decrypt this amount");
-                }
+            } else {
+                println!("❌ Unexpected ciphertext byte size - must be either {} or {}", CONFIDENTIAL_AMOUNT_BYTES, CONFIDENTIAL_BALANCE_BYTES);
             }
         }
     }
